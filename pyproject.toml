@@ -1,0 +1,33 @@
+[project]
+name = "whisper-input"
+version = "0.1.0"
+description = "Linux 语音输入工具 - 按住快捷键说话，松开自动输入"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "sounddevice>=0.4.6",
+    "numpy>=1.24.0",
+    "evdev>=1.7.0",
+    "pyyaml>=6.0",
+    "pystray>=0.19.0",
+    "pillow>=10.0.0",
+    "requests>=2.31.0",
+    "websocket-client>=1.6.0",
+    "funasr>=1.0.0",
+    "torch==2.5.1+cu121",
+    "torchaudio==2.5.1+cu121",
+]
+
+[[tool.uv.index]]
+name = "tuna"
+url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"
+default = true
+
+[[tool.uv.index]]
+name = "pytorch-cu121"
+url = "https://mirror.sjtu.edu.cn/pytorch-wheels/cu121"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu121" }
+torchaudio = { index = "pytorch-cu121" }
