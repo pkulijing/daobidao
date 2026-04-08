@@ -24,6 +24,6 @@ input_method: clipboard
 
 # 提示音
 sound:
-  enabled: true
+  enabled: false
   start: /usr/share/sounds/freedesktop/stereo/message.oga
   stop: /usr/share/sounds/freedesktop/stereo/complete.oga

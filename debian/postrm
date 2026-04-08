@@ -1,0 +1,25 @@
+#!/bin/bash
+set -e
+
+case "$1" in
+    purge)
+        # 清理安装目录中的运行时文件
+        rm -rf /opt/whisper-input/.venv
+        rm -rf /opt/whisper-input/__pycache__
+        echo "[whisper-input] 已清理运行时文件"
+        echo "  用户数据 (~/.config/whisper-input/) 未删除"
+        echo "  用户 venv (~/.local/share/whisper-input/) 未删除"
+        ;;
+
+    remove)
+        # 更新图标缓存和桌面数据库
+        if command -v gtk-update-icon-cache &>/dev/null; then
+            gtk-update-icon-cache -f /usr/share/icons/hicolor/ 2>/dev/null || true
+        fi
+        if command -v update-desktop-database &>/dev/null; then
+            update-desktop-database /usr/share/applications/ 2>/dev/null || true
+        fi
+        ;;
+esac
+
+exit 0

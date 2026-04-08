@@ -48,8 +48,10 @@ def _type_via_clipboard(text: str) -> None:
     # 短暂等待剪贴板同步
     time.sleep(0.05)
 
-    # 模拟 Ctrl+V
-    subprocess.run(["xdotool", "key", "ctrl+v"], timeout=2)
+    # 模拟 Ctrl+V（--clearmodifiers 确保热键释放不干扰）
+    subprocess.run(
+        ["xdotool", "key", "--clearmodifiers", "ctrl+v"], timeout=2
+    )
 
     # 恢复原剪贴板
     if original is not None:

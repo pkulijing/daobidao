@@ -1,0 +1,62 @@
+#!/bin/bash
+set -e
+
+case "$1" in
+    configure)
+        # 将安装用户加入 input 组（读取键盘设备需要）
+        if [ -n "$SUDO_USER" ]; then
+            if ! groups "$SUDO_USER" 2>/dev/null | grep -qw input; then
+                usermod -aG input "$SUDO_USER"
+                echo "[whisper-input] 已将用户 $SUDO_USER 加入 input 组"
+            fi
+        fi
+
+        # 安装 uv（Python 包管理器）
+        if ! command -v uv &>/dev/null; then
+            echo "[whisper-input] 正在安装 uv 包管理器..."
+            if [ -n "$SUDO_USER" ]; then
+                # 以实际用户身份安装 uv（安装到用户目录）
+                su - "$SUDO_USER" -c 'curl -LsSf https://astral.sh/uv/install.sh | sh' || {
+                    echo "[whisper-input] 警告: uv 自动安装失败，请手动安装:"
+                    echo "  curl -LsSf https://astral.sh/uv/install.sh | sh"
+                }
+            else
+                curl -LsSf https://astral.sh/uv/install.sh | sh || {
+                    echo "[whisper-input] 警告: uv 自动安装失败，请手动安装:"
+                    echo "  curl -LsSf https://astral.sh/uv/install.sh | sh"
+                }
+            fi
+        fi
+
+        # 更新图标缓存
+        if command -v gtk-update-icon-cache &>/dev/null; then
+            gtk-update-icon-cache -f /usr/share/icons/hicolor/ 2>/dev/null || true
+        fi
+
+        # 更新桌面数据库
+        if command -v update-desktop-database &>/dev/null; then
+            update-desktop-database /usr/share/applications/ 2>/dev/null || true
+        fi
+
+        echo ""
+        echo "========================================="
+        echo "  Whisper Input 安装完成!"
+        echo "========================================="
+        echo ""
+        echo "  首次启动会自动安装 Python 依赖 (需要几分钟)"
+        echo ""
+        if [ -n "$SUDO_USER" ]; then
+            echo "  用户 $SUDO_USER 已加入 input 组。"
+            echo "  请注销并重新登录以使权限生效。"
+        else
+            echo "  请确保当前用户在 input 组中:"
+            echo "    sudo usermod -aG input \$USER"
+            echo "  然后注销重新登录。"
+        fi
+        echo ""
+        echo "  从应用菜单搜索「语音输入」启动"
+        echo "========================================="
+        ;;
+esac
+
+exit 0

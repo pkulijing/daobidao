@@ -13,25 +13,21 @@ import argparse
 import contextlib
 import os
 import signal
+
+# PyGObject (pip) 使用 girepository-2.0，需要指定系统 typelib 路径
+# 才能找到 gir1.2-appindicator3-0.1 等系统 GIR 包
+if "GI_TYPELIB_PATH" not in os.environ:
+    _typelib_dir = "/usr/lib/girepository-1.0"
+    if os.path.isdir(_typelib_dir):
+        os.environ["GI_TYPELIB_PATH"] = _typelib_dir
 import subprocess
 import sys
 import threading
 
-import yaml
-
+from config_manager import ConfigManager
 from hotkey import HotkeyListener
 from input_method import type_text
 from recorder import AudioRecorder
-
-
-def load_config(config_path: str | None = None) -> dict:
-    """加载配置文件。"""
-    if config_path is None:
-        config_path = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), "config.yaml"
-        )
-    with open(config_path, encoding="utf-8") as f:
-        return yaml.safe_load(f)
 
 
 def create_stt_engine(config: dict):
@@ -82,7 +78,7 @@ class WhisperInput:
         """热键按下 - 开始录音。"""
         if self._processing:
             return
-        print("[main] 🎤 开始录音...")
+        print("[main] 开始录音...")
         if self.sound_enabled:
             play_sound(self.sound_start)
         self.recorder.start()
@@ -91,7 +87,7 @@ class WhisperInput:
         """热键释放 - 停止录音并识别。"""
         if not self.recorder.is_recording:
             return
-        print("[main] ⏹ 停止录音，识别中...")
+        print("[main] 停止录音，识别中...")
         if self.sound_enabled:
             play_sound(self.sound_stop)
 
@@ -111,7 +107,7 @@ class WhisperInput:
         try:
             text = self.stt.transcribe(wav_data)
             if text:
-                print(f"[main] ✅ 识别结果: {text}")
+                print(f"[main] 识别结果: {text}")
                 type_text(text, method=self.input_method)
             else:
                 print("[main] 未识别到文字")
@@ -120,21 +116,30 @@ class WhisperInput:
         finally:
             self._processing = False
 
+    def on_config_changed(self, changes: dict) -> None:
+        """设置页面保存后回调，即时更新可热更新的配置。"""
+        if "sound.enabled" in changes:
+            self.sound_enabled = changes["sound.enabled"]
+            print(f"[main] 提示音已{'开启' if self.sound_enabled else '关闭'}")
+        if "input_method" in changes:
+            self.input_method = changes["input_method"]
+            print(f"[main] 输入方式已切换为: {self.input_method}")
+        if "sensevoice.language" in changes:
+            self.stt.language = changes["sensevoice.language"]
+            print(f"[main] 识别语言已切换为: {self.stt.language}")
+
     def preload_model(self) -> None:
         """预加载模型（仅本地引擎需要）。"""
         if self.config.get("engine") == "sensevoice":
             cache_dir = os.environ.get(
                 "MODELSCOPE_CACHE", "~/.cache/modelscope/hub"
             )
-            print(f"[main] 预加载 SenseVoice 模型 (模型缓存目录: {cache_dir})")
-            print(
-                "[main] 首次运行会从 ModelScope 下载模型，可通过 MODELSCOPE_CACHE 环境变量修改下载目录"
-            )
+            print(f"[main] 预加载 SenseVoice 模型 (缓存: {cache_dir})")
             self.stt._ensure_model()
 
 
-def run_tray(wi: WhisperInput, config: dict) -> None:
-    """运行系统托盘图标（可选）。"""
+def run_tray(wi: WhisperInput, settings_server) -> None:
+    """运行系统托盘图标。"""
     try:
         import pystray
         from PIL import Image, ImageDraw
@@ -145,25 +150,35 @@ def run_tray(wi: WhisperInput, config: dict) -> None:
     def create_icon(color: str = "green") -> Image.Image:
         img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
-        colors = {"green": "#4CAF50", "red": "#F44336", "gray": "#9E9E9E"}
+        colors = {
+            "green": "#4CAF50",
+            "red": "#F44336",
+            "gray": "#9E9E9E",
+        }
         fill = colors.get(color, colors["green"])
         draw.ellipse([8, 8, 56, 56], fill=fill)
-        # 麦克风图标（简化为矩形+半圆）
         draw.rectangle([24, 16, 40, 38], fill="white")
         draw.arc([20, 28, 44, 52], 0, 180, fill="white", width=3)
         draw.line([32, 52, 32, 58], fill="white", width=3)
         return img
+
+    def open_settings(icon, item):
+        if settings_server:
+            settings_server.open_in_browser()
 
     def quit_app(icon, item):
         icon.stop()
         os.kill(os.getpid(), signal.SIGTERM)
 
     menu = pystray.Menu(
+        pystray.MenuItem("设置...", open_settings),
+        pystray.Menu.SEPARATOR,
         pystray.MenuItem("退出", quit_app),
     )
 
     icon = pystray.Icon("whisper-input", create_icon(), "Whisper Input", menu)
-    icon.run_detached()
+    # appindicator 后端下 run_detached() 不显示图标，需要用 run()
+    threading.Thread(target=icon.run, daemon=True).start()
 
 
 def main():
@@ -179,7 +194,8 @@ def main():
     args = parser.parse_args()
 
     # 加载配置
-    config = load_config(args.config)
+    config_mgr = ConfigManager(args.config)
+    config = config_mgr.config
 
     # 命令行参数覆盖配置
     if args.hotkey:
@@ -199,13 +215,22 @@ def main():
     # 创建主控制器
     wi = WhisperInput(config)
 
+    # 启动设置服务器
+    from settings_server import SettingsServer
+
+    settings_server = SettingsServer(
+        config_manager=config_mgr,
+        on_config_changed=wi.on_config_changed,
+    )
+    settings_server.start()
+
     # 预加载模型
     if not args.no_preload:
         wi.preload_model()
 
     # 启动系统托盘
     if not args.no_tray:
-        run_tray(wi, config)
+        run_tray(wi, settings_server)
 
     # 启动热键监听
     listener = HotkeyListener(
@@ -217,6 +242,7 @@ def main():
     # 优雅退出
     def signal_handler(sig, frame):
         print("\n[main] 正在退出...")
+        settings_server.stop()
         listener.stop()
         sys.exit(0)
 

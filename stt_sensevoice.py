@@ -34,7 +34,6 @@ class SenseVoiceSTT:
         self._model = AutoModel(
             model=self.model_name,
             trust_remote_code=True,
-            remote_code="./model.py",
             device=self.device,
             disable_update=True,
         )

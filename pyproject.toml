@@ -14,6 +14,7 @@ dependencies = [
     "funasr>=1.0.0",
     "torch==2.5.1+cu121",
     "torchaudio==2.5.1+cu121",
+    "pygobject>=3.56.2",
 ]
 
 [[tool.uv.index]]
