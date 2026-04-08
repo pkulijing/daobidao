@@ -32,7 +32,8 @@ def _type_via_clipboard(text: str) -> None:
     try:
         original = subprocess.run(
             ["xclip", "-selection", "clipboard", "-o"],
-            capture_output=True, timeout=2,
+            capture_output=True,
+            timeout=2,
         ).stdout
     except Exception:
         original = None

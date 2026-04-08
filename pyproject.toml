@@ -11,8 +11,6 @@ dependencies = [
     "pyyaml>=6.0",
     "pystray>=0.19.0",
     "pillow>=10.0.0",
-    "requests>=2.31.0",
-    "websocket-client>=1.6.0",
     "funasr>=1.0.0",
     "torch==2.5.1+cu121",
     "torchaudio==2.5.1+cu121",
@@ -28,6 +26,29 @@ name = "pytorch-cu121"
 url = "https://mirror.sjtu.edu.cn/pytorch-wheels/cu121"
 explicit = true
 
+[tool.ruff]
+line-length = 80
+
+[tool.ruff.lint]
+extend-select = [
+    "I",      # isort - import 排序
+    "N",      # pep8-naming - 命名规范
+    "UP",     # pyupgrade - 使用新语法
+    "B",      # flake8-bugbear - 常见 bug
+    "SIM",    # flake8-simplify - 可简化的代码
+    "RUF",    # ruff 专有规则
+]
+ignore = [
+    "RUF001",  # 字符串中的全角字符（中文项目正常）
+    "RUF002",  # docstring 中的全角字符
+    "RUF003",  # 注释中的全角字符
+]
+
 [tool.uv.sources]
 torch = { index = "pytorch-cu121" }
 torchaudio = { index = "pytorch-cu121" }
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.9",
+]

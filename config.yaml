@@ -1,6 +1,6 @@
 # Whisper Input - 语音输入配置
 
-# STT 引擎: "sensevoice" (本地) 或 "doubao" (云端)
+# STT 引擎
 engine: sensevoice
 
 # 快捷键配置
@@ -18,14 +18,6 @@ sensevoice:
   model: iic/SenseVoiceSmall
   device: cuda   # cuda 或 cpu
   language: auto  # auto, zh, en, ja, ko, yue
-
-# 豆包(火山引擎) ASR 配置
-# app_id 和 access_token 从 .env.local 环境变量读取 (DOUBAO_APP_ID, DOUBAO_ACCESS_TOKEN)
-doubao:
-  # 集群ID, 参考火山引擎语音识别文档
-  cluster: volcengine_input_common
-  # 语言: zh-CN, en-US, zh-en (中英混合)
-  language: zh-en
 
 # 输入方式: "clipboard" (推荐,支持中文) 或 "xdotool" (仅ASCII)
 input_method: clipboard

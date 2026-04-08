@@ -1,10 +1,11 @@
 """Audio recorder using sounddevice."""
 
 import io
-import numpy as np
-import sounddevice as sd
 import threading
 import wave
+
+import numpy as np
+import sounddevice as sd
 
 
 class AudioRecorder:
@@ -49,7 +50,9 @@ class AudioRecorder:
                 self._stream = None
             return self._to_wav()
 
-    def _audio_callback(self, indata: np.ndarray, frames: int, time_info, status) -> None:
+    def _audio_callback(
+        self, indata: np.ndarray, frames: int, time_info, status
+    ) -> None:
         if status:
             print(f"[recorder] {status}")
         self._frames.append(indata.copy())

@@ -2,47 +2,35 @@
 """Whisper Input - Linux 语音输入工具
 
 按住快捷键说话，松开后自动将语音识别结果输入到当前焦点窗口。
-支持中英文混合输入，支持本地模型(SenseVoice)和云端模型(豆包)切换。
+支持中英文混合输入，使用本地 SenseVoice 模型。
 
 用法:
-    sudo python main.py                    # 使用默认配置
-    sudo python main.py -e sensevoice      # 使用本地 SenseVoice
-    sudo python main.py -e doubao           # 使用豆包云端
-    sudo python main.py -k KEY_RIGHTALT     # 使用右Alt键
+    python main.py                    # 使用默认配置
+    python main.py -k KEY_RIGHTALT    # 使用右Alt键
 """
 
 import argparse
+import contextlib
 import os
 import signal
 import subprocess
 import sys
 import threading
+
 import yaml
 
-from recorder import AudioRecorder
-from input_method import type_text
 from hotkey import HotkeyListener
+from input_method import type_text
+from recorder import AudioRecorder
 
 
-def load_env(env_path: str) -> None:
-    """从 .env.local 文件加载环境变量。"""
-    if not os.path.exists(env_path):
-        return
-    with open(env_path, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            if "=" in line:
-                key, _, value = line.partition("=")
-                os.environ.setdefault(key.strip(), value.strip())
-
-
-def load_config(config_path: str = None) -> dict:
+def load_config(config_path: str | None = None) -> dict:
     """加载配置文件。"""
     if config_path is None:
-        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.yaml")
-    with open(config_path, "r", encoding="utf-8") as f:
+        config_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "config.yaml"
+        )
+    with open(config_path, encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
@@ -52,20 +40,12 @@ def create_stt_engine(config: dict):
 
     if engine == "sensevoice":
         from stt_sensevoice import SenseVoiceSTT
+
         sv_config = config.get("sensevoice", {})
         return SenseVoiceSTT(
             model=sv_config.get("model", "iic/SenseVoiceSmall"),
             device=sv_config.get("device", "cuda"),
             language=sv_config.get("language", "auto"),
-        )
-    elif engine == "doubao":
-        from stt_doubao import DoubaoSTT
-        db_config = config.get("doubao", {})
-        return DoubaoSTT(
-            app_id=os.environ.get("DOUBAO_APP_ID", ""),
-            access_token=os.environ.get("DOUBAO_ACCESS_TOKEN", ""),
-            cluster=db_config.get("cluster", "volcengine_input_common"),
-            language=db_config.get("language", "zh-en"),
         )
     else:
         raise ValueError(f"未知的 STT 引擎: {engine}")
@@ -74,14 +54,12 @@ def create_stt_engine(config: dict):
 def play_sound(path: str) -> None:
     """播放提示音。"""
     if path and os.path.exists(path):
-        try:
+        with contextlib.suppress(FileNotFoundError):
             subprocess.Popen(
                 ["paplay", path],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
-        except FileNotFoundError:
-            pass
 
 
 class WhisperInput:
@@ -124,7 +102,9 @@ class WhisperInput:
 
         # 在后台线程中处理识别，避免阻塞热键监听
         self._processing = True
-        threading.Thread(target=self._process, args=(wav_data,), daemon=True).start()
+        threading.Thread(
+            target=self._process, args=(wav_data,), daemon=True
+        ).start()
 
     def _process(self, wav_data: bytes) -> None:
         """处理识别和输入（在后台线程中运行）。"""
@@ -143,9 +123,13 @@ class WhisperInput:
     def preload_model(self) -> None:
         """预加载模型（仅本地引擎需要）。"""
         if self.config.get("engine") == "sensevoice":
-            cache_dir = os.environ.get("MODELSCOPE_CACHE", "~/.cache/modelscope/hub")
+            cache_dir = os.environ.get(
+                "MODELSCOPE_CACHE", "~/.cache/modelscope/hub"
+            )
             print(f"[main] 预加载 SenseVoice 模型 (模型缓存目录: {cache_dir})")
-            print("[main] 首次运行会从 ModelScope 下载模型，可通过 MODELSCOPE_CACHE 环境变量修改下载目录")
+            print(
+                "[main] 首次运行会从 ModelScope 下载模型，可通过 MODELSCOPE_CACHE 环境变量修改下载目录"
+            )
             self.stt._ensure_model()
 
 
@@ -170,36 +154,11 @@ def run_tray(wi: WhisperInput, config: dict) -> None:
         draw.line([32, 52, 32, 58], fill="white", width=3)
         return img
 
-    def switch_to_sensevoice(icon, item):
-        config["engine"] = "sensevoice"
-        wi.stt = create_stt_engine(config)
-        wi.preload_model()
-        print("[main] 已切换到 SenseVoice (本地)")
-
-    def switch_to_doubao(icon, item):
-        config["engine"] = "doubao"
-        wi.stt = create_stt_engine(config)
-        print("[main] 已切换到豆包 (云端)")
-
     def quit_app(icon, item):
         icon.stop()
         os.kill(os.getpid(), signal.SIGTERM)
 
-    def is_sensevoice(item):
-        return config.get("engine") == "sensevoice"
-
-    def is_doubao(item):
-        return config.get("engine") == "doubao"
-
     menu = pystray.Menu(
-        pystray.MenuItem(
-            "引擎",
-            pystray.Menu(
-                pystray.MenuItem("SenseVoice (本地)", switch_to_sensevoice, checked=is_sensevoice),
-                pystray.MenuItem("豆包 (云端)", switch_to_doubao, checked=is_doubao),
-            ),
-        ),
-        pystray.Menu.SEPARATOR,
         pystray.MenuItem("退出", quit_app),
     )
 
@@ -208,22 +167,21 @@ def run_tray(wi: WhisperInput, config: dict) -> None:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Whisper Input - Linux 语音输入工具")
+    parser = argparse.ArgumentParser(
+        description="Whisper Input - Linux 语音输入工具"
+    )
     parser.add_argument("-c", "--config", help="配置文件路径")
-    parser.add_argument("-e", "--engine", choices=["sensevoice", "doubao"], help="STT引擎")
     parser.add_argument("-k", "--hotkey", help="热键 (如 KEY_RIGHTCTRL)")
     parser.add_argument("--no-tray", action="store_true", help="禁用系统托盘")
-    parser.add_argument("--no-preload", action="store_true", help="不预加载模型")
+    parser.add_argument(
+        "--no-preload", action="store_true", help="不预加载模型"
+    )
     args = parser.parse_args()
 
-    # 加载环境变量和配置
-    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env.local")
-    load_env(env_path)
+    # 加载配置
     config = load_config(args.config)
 
     # 命令行参数覆盖配置
-    if args.engine:
-        config["engine"] = args.engine
     if args.hotkey:
         config["hotkey"] = args.hotkey
 

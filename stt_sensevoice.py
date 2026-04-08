@@ -1,8 +1,9 @@
 """SenseVoice 本地语音识别引擎。"""
 
 import io
-import numpy as np
 import wave
+
+import numpy as np
 
 
 class SenseVoiceSTT:
@@ -11,7 +12,12 @@ class SenseVoiceSTT:
     首次调用时加载模型（约 2-3 秒），之后推理极快。
     """
 
-    def __init__(self, model: str = "iic/SenseVoiceSmall", device: str = "cuda", language: str = "auto"):
+    def __init__(
+        self,
+        model: str = "iic/SenseVoiceSmall",
+        device: str = "cuda",
+        language: str = "auto",
+    ):
         self.model_name = model
         self.device = device
         self.language = language
@@ -20,7 +26,9 @@ class SenseVoiceSTT:
     def _ensure_model(self) -> None:
         if self._model is not None:
             return
-        print(f"[sensevoice] 正在加载模型 {self.model_name} (device={self.device}) ...")
+        print(
+            f"[sensevoice] 正在加载模型 {self.model_name} (device={self.device}) ..."
+        )
         from funasr import AutoModel
 
         self._model = AutoModel(
@@ -50,7 +58,10 @@ class SenseVoiceSTT:
         buf = io.BytesIO(wav_data)
         with wave.open(buf, "rb") as wf:
             audio_bytes = wf.readframes(wf.getnframes())
-            audio = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+            audio = (
+                np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32)
+                / 32768.0
+            )
 
         # 检查音频长度，太短则跳过
         if len(audio) < 1600:  # < 0.1s
@@ -74,6 +85,7 @@ class SenseVoiceSTT:
     def _clean_text(text: str) -> str:
         """清理 SenseVoice 输出中的特殊标签。"""
         import re
+
         # 移除 <|...|> 格式的标签
         text = re.sub(r"<\|[^|]*\|>", "", text)
         return text.strip()

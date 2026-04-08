@@ -1,11 +1,12 @@
 """热键监听模块 - 使用 evdev 监听键盘事件，支持区分左右修饰键。"""
 
-import evdev
-from evdev import ecodes, InputEvent
+import contextlib
 import select
 import threading
-from typing import Callable
+from collections.abc import Callable
 
+import evdev
+from evdev import ecodes
 
 # 支持的热键映射
 SUPPORTED_KEYS = {
@@ -13,8 +14,8 @@ SUPPORTED_KEYS = {
     "KEY_LEFTCTRL": ecodes.KEY_LEFTCTRL,
     "KEY_RIGHTALT": ecodes.KEY_RIGHTALT,
     "KEY_LEFTALT": ecodes.KEY_LEFTALT,
-    "KEY_RIGHTMETA": ecodes.KEY_RIGHTMETA,   # 右Win/Super键
-    "KEY_LEFTMETA": ecodes.KEY_LEFTMETA,     # 左Win/Super键
+    "KEY_RIGHTMETA": ecodes.KEY_RIGHTMETA,  # 右Win/Super键
+    "KEY_LEFTMETA": ecodes.KEY_LEFTMETA,  # 左Win/Super键
     "KEY_CAPSLOCK": ecodes.KEY_CAPSLOCK,
     "KEY_F1": ecodes.KEY_F1,
     "KEY_F2": ecodes.KEY_F2,
@@ -56,7 +57,9 @@ class HotkeyListener:
     ):
         key_code = SUPPORTED_KEYS.get(hotkey)
         if key_code is None:
-            raise ValueError(f"不支持的热键: {hotkey}，支持的热键: {list(SUPPORTED_KEYS.keys())}")
+            raise ValueError(
+                f"不支持的热键: {hotkey}，支持的热键: {list(SUPPORTED_KEYS.keys())}"
+            )
 
         self.key_code = key_code
         self.hotkey_name = hotkey
@@ -97,7 +100,10 @@ class HotkeyListener:
             for device in r:
                 try:
                     for event in device.read():
-                        if event.type == ecodes.EV_KEY and event.code == self.key_code:
+                        if (
+                            event.type == ecodes.EV_KEY
+                            and event.code == self.key_code
+                        ):
                             if event.value == 1 and not self._pressed:
                                 # 按下
                                 self._pressed = True
@@ -112,7 +118,5 @@ class HotkeyListener:
 
         # 清理
         for kb in keyboards:
-            try:
+            with contextlib.suppress(Exception):
                 kb.close()
-            except Exception:
-                pass
