@@ -12,10 +12,20 @@ case "$1" in
         fi
 
         # 安装 uv（Python 包管理器）
-        if ! command -v uv &>/dev/null; then
+        # sudo 环境下 PATH 不含用户目录，需要检查实际用户的 uv
+        _uv_found=false
+        if [ -n "$SUDO_USER" ]; then
+            _user_home=$(eval echo "~$SUDO_USER")
+            if [ -x "$_user_home/.local/bin/uv" ] || su - "$SUDO_USER" -c 'command -v uv' &>/dev/null; then
+                _uv_found=true
+            fi
+        elif command -v uv &>/dev/null; then
+            _uv_found=true
+        fi
+
+        if [ "$_uv_found" = false ]; then
             echo "[whisper-input] 正在安装 uv 包管理器..."
             if [ -n "$SUDO_USER" ]; then
-                # 以实际用户身份安装 uv（安装到用户目录）
                 su - "$SUDO_USER" -c 'curl -LsSf https://astral.sh/uv/install.sh | sh' || {
                     echo "[whisper-input] 警告: uv 自动安装失败，请手动安装:"
                     echo "  curl -LsSf https://astral.sh/uv/install.sh | sh"
