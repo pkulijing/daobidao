@@ -2,8 +2,8 @@
 # 构建 Whisper Input 安装包 - 自动检测平台
 set -e
 
-VERSION="0.2.0"
 PKG_NAME="whisper-input"
+VERSION=$(grep '^version' pyproject.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
 
 # 公共源文件列表
 SOURCE_PY=(
