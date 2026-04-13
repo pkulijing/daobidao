@@ -206,12 +206,6 @@ def run_tray(wi: WhisperInput, settings_server) -> None:
         print("[main] pystray/Pillow 未安装，跳过系统托盘")
         return
 
-    status_colors = {
-        "loading": "#9E9E9E",
-        "ready": "#4CAF50",
-        "recording": "#F44336",
-        "processing": "#FF9800",
-    }
     status_tips = {
         "loading": "Whisper Input - 加载中...",
         "ready": "Whisper Input - 就绪",
@@ -219,15 +213,52 @@ def run_tray(wi: WhisperInput, settings_server) -> None:
         "processing": "Whisper Input - 识别中...",
     }
 
+    # macOS 菜单栏规范:用模板图(纯黑+透明)由系统自动反色,
+    # 仅 recording 状态叠加红点作为活跃指示(非模板图)。
+    # 源图画得足够大,配合 Retina setSize_ 才清晰。
+    icon_src = 128
+
+    def _draw_mic(draw: ImageDraw.ImageDraw, filled: bool) -> None:
+        black = (0, 0, 0, 255)
+        width = 12
+        if filled:
+            draw.rounded_rectangle(
+                [40, 16, 88, 76], radius=24, fill=black
+            )
+        else:
+            draw.rounded_rectangle(
+                [40, 16, 88, 76],
+                radius=24,
+                outline=black,
+                width=width,
+            )
+        draw.arc([20, 36, 108, 104], 0, 180, fill=black, width=width)
+        draw.line([64, 96, 64, 116], fill=black, width=width)
+        draw.line([40, 116, 88, 116], fill=black, width=width)
+
     def create_icon(status: str = "loading") -> Image.Image:
-        img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+        img = Image.new("RGBA", (icon_src, icon_src), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
-        fill = status_colors.get(status, status_colors["ready"])
-        draw.ellipse([8, 8, 56, 56], fill=fill)
-        draw.rectangle([24, 16, 40, 38], fill="white")
-        draw.arc([20, 28, 44, 52], 0, 180, fill="white", width=3)
-        draw.line([32, 52, 32, 58], fill="white", width=3)
+        if status == "ready":
+            _draw_mic(draw, filled=False)
+        elif status == "processing":
+            _draw_mic(draw, filled=True)
+        elif status == "loading":
+            _draw_mic(draw, filled=False)
+            # 加载中:底部省略号
+            for cx in (40, 64, 88):
+                draw.ellipse(
+                    [cx - 6, 112, cx + 6, 124], fill=(0, 0, 0, 160)
+                )
+        elif status == "recording":
+            _draw_mic(draw, filled=True)
+            # 活跃红点徽标(右上角)
+            draw.ellipse([84, 4, 124, 44], fill=(244, 67, 54, 255))
         return img
+
+    # recording 状态不能作为 template image(需要保留红色)
+    def _is_template(status: str) -> bool:
+        return status != "recording"
 
     def open_settings(icon, item):
         if settings_server:
@@ -257,8 +288,41 @@ def run_tray(wi: WhisperInput, settings_server) -> None:
         status_tips["loading"],
         menu,
     )
+    icon._wi_template = True  # loading 状态用模板图
+
+    # macOS: 替换 pystray 的 _assert_image,用 Retina 像素尺寸构建 NSImage
+    # 并标记为 template image,让系统按菜单栏主题自动适配。
+    if sys.platform == "darwin":
+        import io as _io
+
+        import AppKit  # type: ignore
+        import Foundation  # type: ignore
+
+        def _patched_assert_image():
+            thickness = int(icon._status_bar.thickness())
+            scale = 2  # Retina
+            px = thickness * scale
+            source = icon._icon.resize(
+                (px, px), Image.Resampling.LANCZOS
+            )
+            buf = _io.BytesIO()
+            source.save(buf, "png")
+            data = Foundation.NSData.dataWithBytes_length_(
+                buf.getvalue(), len(buf.getvalue())
+            )
+            ns_image = AppKit.NSImage.alloc().initWithData_(data)
+            # 告诉 AppKit 这是 thickness 点 × 2 像素的高分图
+            ns_image.setSize_((thickness, thickness))
+            ns_image.setTemplate_(
+                bool(getattr(icon, "_wi_template", True))
+            )
+            icon._icon_image = ns_image
+            icon._status_item.button().setImage_(ns_image)
+
+        icon._assert_image = _patched_assert_image
 
     def on_status_change(status: str) -> None:
+        icon._wi_template = _is_template(status)
         icon.icon = create_icon(status)
         icon.title = status_tips.get(
             status, status_tips["ready"]
