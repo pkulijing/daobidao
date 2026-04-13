@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   lint:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -21,7 +21,7 @@ jobs:
         run: uvx ruff check .
 
   version-check:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.ver.outputs.version }}
       is_release: ${{ steps.ver.outputs.is_release }}
@@ -93,12 +93,25 @@ jobs:
 
   build-linux:
     needs: version-check
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
       - name: Build .deb
         run: bash build.sh
+
+      - name: Smoke test — verify deb dependencies are resolvable
+        run: |
+          set -e
+          DEB=$(ls build/deb/*.deb)
+          echo "Testing $DEB"
+          echo "--- declared dependencies ---"
+          dpkg-deb -f "$DEB" Depends
+          echo "--- apt dry-run install ---"
+          sudo apt-get update -qq
+          # --simulate 不实际安装，只验证依赖能否解析
+          # 失败会非零退出，捕获「老发行版没有 libgirepository-2.0-dev」这类问题
+          sudo apt-get install --simulate -y "$PWD/$DEB"
 
       - name: Upload .deb artifact
         uses: actions/upload-artifact@v4
@@ -111,7 +124,7 @@ jobs:
   release:
     needs: [version-check, build-macos, build-linux]
     if: needs.version-check.outputs.is_release == 'true' && github.ref == 'refs/heads/master'
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 

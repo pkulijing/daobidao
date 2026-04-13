@@ -20,7 +20,7 @@
 ## 系统要求
 
 ### Linux
-- Ubuntu / Debian（X11 桌面环境）
+- **Ubuntu 24.04+ / Debian 13+**（X11 桌面环境，较老发行版因缺少 `libgirepository-2.0-dev` 无法安装）
 - Python 3.12+
 - NVIDIA GPU（推荐，CPU 也可运行）
 - [uv](https://docs.astral.sh/uv/) 包管理器
@@ -36,7 +36,7 @@
 从 [Releases](https://github.com/pkulijing/whisper-input/releases) 页面下载最新版本：
 
 - **macOS (Apple Silicon)**：`WhisperInput_<version>.dmg`
-- **Linux (x86_64, Debian/Ubuntu)**：`whisper-input_<version>.deb`
+- **Linux (x86_64, Ubuntu 24.04+ / Debian 13+)**：`whisper-input_<version>.deb`
 
 每次 push 到 master 的构建产物也会上传到 [Actions](https://github.com/pkulijing/whisper-input/actions) 页面的 Artifacts（保留 30 天，需登录 GitHub 下载）。
 

@@ -3,7 +3,7 @@
 ## 一、最终方案概览
 
 - **触发**：push 到 `master` 和 `ci-bootstrap`（调试用）+ `workflow_dispatch` 手动兜底
-- **构建矩阵**：macOS arm64 (`macos-14`) + Linux x86_64 (`ubuntu-22.04`)，**显式版本不用 latest**
+- **构建矩阵**：macOS arm64 (`macos-14`) + Linux x86_64 (`ubuntu-24.04`)，**显式版本不用 latest**
 - **额外 lint**：ruff check，~10s，拦截明显风格/语法问题
 - **版本号管理**：方案 B + 半自动 tag 发版
   - `pyproject.toml` 仍是版本号唯一来源
@@ -18,17 +18,34 @@
 ## 一点五、Runner 版本固定的理由
 
 **不使用 `ubuntu-latest` / `macos-latest`**，原因：
-
 - `latest` 会随时间漂移，某天悄悄升到新版本，构建行为静默变化
-- **Linux glibc 向前兼容陷阱**：高 glibc 编译的二进制无法在低 glibc 系统运行。本项目 deb 当前不含 native 编译产物（纯 python + dpkg-deb），glibc 担忧暂不成立；但固定到 `ubuntu-22.04`（glibc 2.35）可作为"未来引入 native 依赖时的兼容下限"
-- macOS 同理：固定 `macos-14`（Sonoma, arm64），避免 hdiutil/sips 行为漂移
-- `ubuntu-20.04` 已于 2025-04 被 GitHub 退役，不能再用
+- macOS 固定 `macos-14`（Sonoma, arm64），避免 hdiutil/sips 行为漂移
+
+**Linux 为什么选 `ubuntu-24.04` 而不是更老的版本**：
+- 项目 `debian/control` 的 `Depends` 字段声明了 `libgirepository-2.0-dev`（pygobject 3.54+ 运行时依赖 girepository-2.0，来自 glib 2.80+）
+- 这个包在 Ubuntu 仓库里只有 24.04 及以后才有；22.04/20.04 根本装不了
+- 因此项目"真实最低支持版本"本来就是 Ubuntu 24.04，CI 用 24.04 = 和真实 min 对齐
+- 用 22.04 会制造"CI 绿但用户装不了"的盲区
+- deb 本身不含 native 编译产物（纯 python + 配置），runner 的 glibc 版本对最终产物无影响，所以 glibc 向前兼容担忧在本项目不成立
+
+## 一点六、deb smoke test
+
+build-linux job 在打包完成后增加一步：
+
+```bash
+sudo apt-get update -qq
+sudo apt-get install --simulate -y "$PWD/build/deb/*.deb"
+```
+
+用 apt 的依赖解析器验证 deb 的 `Depends` 字段能在 runner 上被满足。**不实际安装**（`--simulate`），避免触发 postinst 里的 `uv sync` 拉几 GB 的 torch。
+
+作用：以后谁改了 `debian/control` 加了个系统上没有的包，CI 立刻会红，不会等到用户装机时才发现。
 
 ## 二、Workflow 文件设计
 
 新建唯一 workflow 文件：`.github/workflows/build.yml`
 
-### Job 0: `lint`（ubuntu-22.04）
+### Job 0: `lint`（ubuntu-24.04）
 
 1. checkout
 2. 安装 uv
@@ -36,7 +53,7 @@
 
 失败则 fail，但不阻断 build job（用 `needs` 时不让 build 依赖 lint，保持并行）。
 
-### Job 1: `version-check`（ubuntu-22.04）
+### Job 1: `version-check`（ubuntu-24.04）
 
 职责：解析当前版本号、判断是否为「发版 push」、产出供后续 job 消费的输出。
 
@@ -65,7 +82,7 @@
 4. `bash build.sh`
 5. `actions/upload-artifact@v4` 上传 `build/macos/*.dmg`，名为 `WhisperInput-macos-${version}`，保留 30 天
 
-### Job 3: `build-linux`（ubuntu-22.04，needs: version-check）
+### Job 3: `build-linux`（ubuntu-24.04，needs: version-check）
 
 1. checkout
 2. 安装 uv
