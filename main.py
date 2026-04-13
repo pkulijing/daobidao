@@ -239,44 +239,66 @@ def run_tray(wi: WhisperInput, settings_server, on_quit) -> None:
     # macOS 菜单栏规范:用模板图(纯黑+透明)由系统自动反色,
     # 仅 recording 状态叠加红点作为活跃指示(非模板图)。
     # 源图画得足够大,配合 Retina setSize_ 才清晰。
+    #
+    # Linux 侧 pystray 走 AppIndicator,不会做模板反色,纯黑图标
+    # 在深色面板里几乎看不见,所以按状态用品牌色:
+    #   loading=灰,ready=绿(#4CAF50),processing=橙(#FF9800),
+    #   recording=红(#F44336)。macOS 保持纯黑模板图不变。
     icon_src = 128
+    is_mac = sys.platform == "darwin"
 
-    def _draw_mic(draw: ImageDraw.ImageDraw, filled: bool) -> None:
-        black = (0, 0, 0, 255)
+    def _status_color(status: str) -> tuple[int, int, int, int]:
+        if is_mac:
+            return (0, 0, 0, 255)
+        return {
+            "loading": (158, 158, 158, 255),
+            "ready": (76, 175, 80, 255),
+            "processing": (255, 152, 0, 255),
+            "recording": (244, 67, 54, 255),
+        }.get(status, (76, 175, 80, 255))
+
+    def _draw_mic(
+        draw: ImageDraw.ImageDraw,
+        filled: bool,
+        color: tuple[int, int, int, int],
+    ) -> None:
         width = 12
         if filled:
             draw.rounded_rectangle(
-                [40, 16, 88, 76], radius=24, fill=black
+                [40, 16, 88, 76], radius=24, fill=color
             )
         else:
             draw.rounded_rectangle(
                 [40, 16, 88, 76],
                 radius=24,
-                outline=black,
+                outline=color,
                 width=width,
             )
-        draw.arc([20, 36, 108, 104], 0, 180, fill=black, width=width)
-        draw.line([64, 96, 64, 116], fill=black, width=width)
-        draw.line([40, 116, 88, 116], fill=black, width=width)
+        draw.arc([20, 36, 108, 104], 0, 180, fill=color, width=width)
+        draw.line([64, 96, 64, 116], fill=color, width=width)
+        draw.line([40, 116, 88, 116], fill=color, width=width)
 
     def create_icon(status: str = "loading") -> Image.Image:
         img = Image.new("RGBA", (icon_src, icon_src), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
+        color = _status_color(status)
         if status == "ready":
-            _draw_mic(draw, filled=False)
+            _draw_mic(draw, filled=False, color=color)
         elif status == "processing":
-            _draw_mic(draw, filled=True)
+            _draw_mic(draw, filled=True, color=color)
         elif status == "loading":
-            _draw_mic(draw, filled=False)
+            _draw_mic(draw, filled=False, color=color)
             # 加载中:底部省略号
+            dot_color = (*color[:3], 160)
             for cx in (40, 64, 88):
-                draw.ellipse(
-                    [cx - 6, 112, cx + 6, 124], fill=(0, 0, 0, 160)
-                )
+                draw.ellipse([cx - 6, 112, cx + 6, 124], fill=dot_color)
         elif status == "recording":
-            _draw_mic(draw, filled=True)
-            # 活跃红点徽标(右上角)
-            draw.ellipse([84, 4, 124, 44], fill=(244, 67, 54, 255))
+            _draw_mic(draw, filled=True, color=color)
+            if is_mac:
+                # macOS 模板图是纯黑的,需要额外红点徽标提示"正在录音"
+                draw.ellipse(
+                    [84, 4, 124, 44], fill=(244, 67, 54, 255)
+                )
         return img
 
     # recording 状态不能作为 template image(需要保留红色)
