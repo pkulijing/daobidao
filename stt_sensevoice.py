@@ -1,6 +1,7 @@
 """SenseVoice 本地语音识别引擎。"""
 
 import io
+import os
 import wave
 
 import numpy as np
@@ -31,8 +32,32 @@ class SenseVoiceSTT:
             return
 
         self.device = self._select_device(self.device_priority)
+
+        # 解析模型路径：若 model_name 是 modelscope ID(形如 "iic/SenseVoiceSmall"),
+        # 先去本地清单 / modelscope 缓存里找一个完整副本,命中就把绝对路径喂给
+        # AutoModel —— funasr 拿到本地路径就走纯本地加载,完全跳过 modelscope hub
+        # 的 revision check。这是"一次联网下载成功 → 永久离线可用"的关键一环,
+        # 配合 setup_window stage B 的 manifest 落盘逻辑生效。详见 model_state.py。
+        resolved = self.model_name
+        if "/" in self.model_name and not os.path.isdir(self.model_name):
+            try:
+                from model_state import find_local_model
+
+                local = find_local_model(self.model_name)
+            except Exception as e:
+                print(f"[sensevoice] 本地模型查找失败,退回 modelscope: {e}")
+                local = None
+            if local:
+                resolved = local
+                print(f"[sensevoice] 命中本地模型缓存: {local}")
+            else:
+                print(
+                    f"[sensevoice] 未找到本地缓存,将通过 modelscope 下载 "
+                    f"({self.model_name})"
+                )
+
         print(
-            f"[sensevoice] 正在加载模型 {self.model_name}"
+            f"[sensevoice] 正在加载模型 {resolved}"
             f" (device={self.device}) ..."
         )
         from funasr import AutoModel
@@ -54,7 +79,7 @@ class SenseVoiceSTT:
         # 想"修复"），每次都是因为读 funasr README 照搬示例而示例本身误导。
         # 请不要再加回来。
         self._model = AutoModel(
-            model=self.model_name,
+            model=resolved,
             device=self.device,
             disable_update=True,
         )

@@ -305,12 +305,59 @@ class SetupWindow:
         self._append_log("\n==> 阶段 2: 准备 SenseVoice 模型")
 
     def _stage_b_run(self) -> bool:
+        # 本地优先：先在 setup_window 自己进程里(stdlib)查 manifest / 默认
+        # cache。命中就根本不起 user venv 子进程,modelscope 也不会被 import,
+        # 彻底没有任何"看看有没有新版"的隐式联网。这是"一次成功后永久离线
+        # 可用"的核心 —— 见 model_state.py 的 docstring。
+        sys.path.insert(0, str(APP_SRC))
+        model_id = "iic/SenseVoiceSmall"
+        try:
+            from model_state import find_local_model, save_state
+        except Exception as e:
+            self._ui(
+                self._append_log, f"[loader] 加载 model_state 失败: {e}",
+            )
+            find_local_model = None  # type: ignore[assignment]
+            save_state = None  # type: ignore[assignment]
+
+        if find_local_model is not None:
+            local = find_local_model(model_id)
+            if local:
+                self._ui(
+                    self._append_log, f"[loader] 命中本地模型: {local}",
+                )
+                # 顺手刷新 manifest:首次发现是从 modelscope 默认 cache 里命中的,
+                # 写一份 manifest 把它"认领"到我们这边,后续就走 manifest 路径。
+                try:
+                    save_state(model_id, local)  # type: ignore[misc]
+                except Exception as e:
+                    self._ui(
+                        self._append_log,
+                        f"[loader] manifest 写入失败(忽略): {e}",
+                    )
+                self._ui(self._set_progress, 100)
+                self._ui(
+                    self._append_log, "✓ 模型已就绪 (本地缓存,跳过下载)",
+                )
+                return True
+
+        # 没有本地缓存:起 user venv 子进程跑 modelscope snapshot_download。
+        # 子进程结束后由我们(setup_window 进程)再读一次 manifest 确认写入成功 ——
+        # 子进程里写 manifest 是为了拿到 snapshot_download 返回的真实路径。
         loader_code = (
             "import os, sys\n"
+            "sys.path.insert(0, os.getcwd())\n"
             "os.environ.setdefault('PYTHONUNBUFFERED', '1')\n"
-            "print('[loader] checking SenseVoice model cache', flush=True)\n"
+            "print('[loader] downloading SenseVoice model from modelscope',"
+            " flush=True)\n"
             "from modelscope.hub.snapshot_download import snapshot_download\n"
             "p = snapshot_download('iic/SenseVoiceSmall')\n"
+            "try:\n"
+            "    from model_state import save_state\n"
+            "    save_state('iic/SenseVoiceSmall', p)\n"
+            "    print('[loader] manifest 已写入', flush=True)\n"
+            "except Exception as e:\n"
+            "    print(f'[loader] manifest 写入失败(忽略): {e}', flush=True)\n"
             "print(f'[loader] model ready: {p}', flush=True)\n"
         )
         env = os.environ.copy()

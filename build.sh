@@ -9,7 +9,7 @@ VERSION=$(grep '^version' pyproject.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
 SOURCE_PY=(
     main.py hotkey.py input_method.py recorder.py
     stt_sensevoice.py config_manager.py settings_server.py
-    version.py overlay.py
+    version.py overlay.py model_state.py
 )
 SOURCE_BACKENDS=(
     backends/__init__.py

@@ -1439,7 +1439,7 @@ wheels = [
 
 [[package]]
 name = "whisper-input"
-version = "0.3.2"
+version = "0.3.3"
 source = { virtual = "." }
 dependencies = [
     { name = "evdev", marker = "sys_platform == 'linux' or (extra == 'extra-13-whisper-input-cpu' and extra == 'extra-13-whisper-input-cuda')" },
