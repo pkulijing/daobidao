@@ -4,6 +4,7 @@ set -e
 
 PKG_NAME="whisper-input"
 VERSION=$(grep '^version' pyproject.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "")
 
 # 公共源文件列表
 SOURCE_PY=(
@@ -29,7 +30,13 @@ build_macos() {
     APP_NAME="Whisper Input"
     BUILD_DIR="build/macos"
     CACHE_DIR="$BUILD_DIR/cache"
-    APP_BUNDLE="$BUILD_DIR/$APP_NAME.app"
+    FINAL_APP="$BUILD_DIR/$APP_NAME.app"
+    # 关键:整个构建在不带 .app 后缀的 staging 目录里完成。一旦目录名带 .app,
+    # macOS LaunchServices 会把它注册成 managed app,后续对 bundle 内部的写入
+    # 会被 App Management 拦截报 EPERM(且时机随机,有时第一次能跑通,反复 build
+    # 几次后就开始失败)。staging 阶段 LS 完全不知情,cp 全程不受干扰;最后用
+    # mv 一次性改名为 .app,mv 是单次 inode rename,瞬间完成,没有窗口期。
+    APP_BUNDLE="$BUILD_DIR/staging-bundle"
     DMG_NAME="WhisperInput_${VERSION}.dmg"
 
     echo "正在构建 $APP_NAME v$VERSION (macOS) ..."
@@ -57,8 +64,24 @@ build_macos() {
     PY_EXTRACT="$CACHE_DIR/python-${PYTHON_VERSION}"
 
     # 清理旧构建内容，保留 cache（python tarball 复用）
+    # 注意:旧 .app 内部文件可能被 macOS LaunchServices 加了 com.apple.provenance
+    # 受保护 xattr,普通 rm 会静默失败,留下半残骸,下次 cp -R 覆盖时报 EPERM。
+    # 先 chmod -R u+w 强制可写,再 rm,最后校验确实删干净了。
     mkdir -p "$BUILD_DIR" "$CACHE_DIR"
-    find "$BUILD_DIR" -mindepth 1 -maxdepth 1 ! -name cache -exec rm -rf {} +
+    for entry in "$BUILD_DIR"/*; do
+        [ -e "$entry" ] || continue
+        case "$(basename "$entry")" in
+            cache) continue ;;
+        esac
+        chmod -R u+w "$entry" 2>/dev/null || true
+        rm -rf "$entry"
+        if [ -e "$entry" ]; then
+            echo "错误: 无法清理旧构建产物: $entry"
+            echo "请手动 rm -rf 后重试,或在 系统设置 → 隐私与安全性 →"
+            echo "应用程序管理 中给当前终端授权后再 build。"
+            exit 1
+        fi
+    done
 
     # 1. 下载 + 校验 + 解压 python-build-standalone
     echo "[1/5] 准备 python-build-standalone $PYTHON_VERSION ..."
@@ -125,8 +148,9 @@ build_macos() {
     mkdir -p "$DEST/assets"
 
     sed "s/VERSION_PLACEHOLDER/$VERSION/g" macos/Info.plist > "$APP_BUNDLE/Contents/Info.plist"
-    cp macos/whisper-input.sh "$APP_BUNDLE/Contents/MacOS/whisper-input"
-    chmod 755 "$APP_BUNDLE/Contents/MacOS/whisper-input"
+    # 注意:不要在这里就写 Contents/MacOS/whisper-input。一旦 launcher 落地,
+    # macOS LaunchServices 会立刻把整个 .app 注册为 managed app,后续 cp -R
+    # python 会被 App Management 全部拦截报 EPERM。launcher 留到最后一步写。
     cp "$BUILD_DIR/AppIcon.icns" "$RES/"
 
     # bundle 内置 python（从 cache 整棵复制，保留权限和符号链接）
@@ -193,6 +217,17 @@ PLIST
     cp "${SOURCE_BACKENDS[@]}" "$DEST/backends/"
     cp assets/whisper-input.png "$DEST/assets/"
     cp macos/setup_window.py "$DEST/"
+    [ -n "$COMMIT" ] && echo "$COMMIT" > "$DEST/commit.txt"
+
+    # launcher 留到最后:它一旦落地就会触发 LaunchServices 注册。即便如此,
+    # 此时 staging-bundle 还没改名为 .app,LS 不会把它当 managed app 看。
+    cp macos/whisper-input.sh "$APP_BUNDLE/Contents/MacOS/whisper-input"
+    chmod 755 "$APP_BUNDLE/Contents/MacOS/whisper-input"
+
+    # 整个 staging 完成,mv 改名为 .app。mv 是单次 inode rename,
+    # LaunchServices 来不及在 mv 中途插手。
+    mv "$APP_BUNDLE" "$FINAL_APP"
+    APP_BUNDLE="$FINAL_APP"
 
     # 4. 创建 DMG
     echo "[4/5] 创建 DMG 安装包 ..."
@@ -241,6 +276,7 @@ build_linux() {
 
     cp "${SOURCE_PY[@]}" "${SOURCE_OTHER[@]}" "$BUILD_DIR/opt/whisper-input/"
     cp "${SOURCE_BACKENDS[@]}" "$BUILD_DIR/opt/whisper-input/backends/"
+    [ -n "$COMMIT" ] && echo "$COMMIT" > "$BUILD_DIR/opt/whisper-input/commit.txt"
     # setup_window.py 和 python_dist.txt 是 Linux 运行期必需的引导资源，
     # 源在 debian/ 与 postinst/control 并列；安装到 /opt/whisper-input/ 根下
     cp debian/setup_window.py debian/python_dist.txt \

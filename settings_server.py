@@ -354,7 +354,7 @@ SETTINGS_HTML = """\
     </button>
   </div>
   <div class="footer">
-    v<!--VERSION_PLACEHOLDER--> &middot;
+    v<!--VERSION_PLACEHOLDER--> <!--COMMIT_PLACEHOLDER--> &middot;
     <a href="https://github.com/pkulijing/whisper-input" target="_blank">
       GitHub
     </a>
@@ -559,10 +559,19 @@ def _get_settings_html() -> str:
     html = html.replace("HOTKEY_KEY_PLACEHOLDER", HOTKEY_CONFIG_KEY)
     html = html.replace("HOTKEY_DEFAULT_PLACEHOLDER", hotkey_default)
 
-    # 版本号
-    from version import __version__
+    # 版本号 + commit
+    from version import __commit__, __version__
 
     html = html.replace("<!--VERSION_PLACEHOLDER-->", __version__)
+    if __commit__:
+        short = __commit__[:7]
+        commit_html = (
+            f'(<a href="https://github.com/pkulijing/whisper-input/commit/'
+            f'{__commit__}" target="_blank">{short}</a>)'
+        )
+    else:
+        commit_html = ""
+    html = html.replace("<!--COMMIT_PLACEHOLDER-->", commit_html)
 
     # 输入方式：macOS 只有剪贴板，Linux 额外支持 xdotool
     if IS_MACOS:
