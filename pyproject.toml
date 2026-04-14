@@ -1,6 +1,6 @@
 [project]
 name = "whisper-input"
-version = "0.3.2"
+version = "0.3.3"
 description = "语音输入工具 - 按住快捷键说话，松开自动输入"
 readme = "README.md"
 # 锁死在 3.12.x：.python-version 钉的就是 3.12.13，且 Linux 下 torch wheel 只提供
