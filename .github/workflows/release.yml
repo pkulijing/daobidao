@@ -1,0 +1,51 @@
+name: Release
+
+# Tag 触发 PyPI 发布,走 Trusted Publishing (OIDC),无需 API token。
+# 首次发布前需要在 pypi.org/manage/account/publishing/ 添加 pending publisher,
+# 以及在 GitHub repo Settings → Environments 下创建 "pypi" 环境。
+#
+# 发版流程:
+#   1. pyproject.toml bump version
+#   2. git commit + push 到 master
+#   3. git tag v<version> && git push --tags   ← 触发本 workflow
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-24.04
+    environment: pypi
+    permissions:
+      id-token: write  # PyPI Trusted Publishing 的 OIDC
+      contents: write  # 创建 GitHub Release
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Verify tag matches pyproject version
+        run: |
+          set -e
+          TAG="${GITHUB_REF#refs/tags/v}"
+          VER=$(grep '^version' pyproject.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          if [ "$TAG" != "$VER" ]; then
+            echo "::error::git tag v$TAG 与 pyproject.toml version $VER 不一致,拒绝发布"
+            exit 1
+          fi
+          echo "Tag v$TAG 匹配 pyproject.toml version $VER,继续"
+
+      - name: Build wheel + sdist
+        run: uv build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        # 默认行为:trusted publishing, packages-dir=dist/,verify metadata
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
