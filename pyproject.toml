@@ -10,10 +10,6 @@ dependencies = [
     "pyyaml>=6.0",
     "pystray>=0.19.0",
     "pillow>=10.0.0",
-    # sherpa-onnx wheel 已静态打包 onnxruntime,不依赖 pip 上的 onnxruntime。
-    # 唯一 Python 依赖是 numpy,所以整个 uv sync 过程不会触碰 pypi.org。
-    # 这次迁移把 torch/torchaudio/funasr 和 cuda/cpu 双 extras 都干掉了,
-    # 国内首装体验从"可能卡 40 分钟"变成"几十秒完成"。
     # Linux 专用
     "evdev>=1.7.0; sys_platform == 'linux'",
     "pygobject>=3.56.2; sys_platform == 'linux'",
@@ -23,6 +19,10 @@ dependencies = [
     "kaldi-native-fbank>=1.22.3",
     "soundfile>=0.13.1",
     "sentencepiece>=0.2.1",
+    # 模型下载走 modelscope 官方库的 snapshot_download。base install 只拉
+    # filelock / packaging / requests / tqdm / urllib3 这几个轻量依赖(~36 MB),
+    # torch / transformers / scipy 等推理栈全在 extras 里,不装 extras 就不会拉。
+    "modelscope>=1.35.4",
 ]
 
 [project.scripts]

@@ -8,10 +8,9 @@
   - qwen3_asr:    Qwen3-ASR(待上游出 ONNX 落地件)
 新增后端时只需在 stt/ 下加一个模块 + 在 create_stt 里加一个分支。
 
-**懒加载原则**:本包的 __init__.py 刻意不做任何 eager 导入 —— setup_window
-引导向导跑在 bundled python-build-standalone 里,没有 numpy / onnxruntime
-等第三方库,但它需要 import stt.downloader(纯 stdlib)。eager 导入
-SenseVoiceSTT 会触发 numpy import 链,导致引导阶段崩溃。
+**懒加载原则**:本包的 __init__.py 刻意不做任何 eager 导入 —— numpy /
+onnxruntime / modelscope 的 import 成本留给真正需要推理时再付,让
+`whisper-input --help` 之类的轻量调用路径保持启动毫秒级。
 """
 
 from whisper_input.stt.base import BaseSTT

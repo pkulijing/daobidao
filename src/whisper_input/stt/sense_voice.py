@@ -5,8 +5,7 @@
     ├─ stt._wav_frontend  (port 自 funasr_onnx,kaldi_native_fbank)
     ├─ stt._tokenizer     (port 自 funasr_onnx,sentencepiece)
     ├─ stt._postprocess   (port 自 funasr_onnx,纯字符串处理)
-    ├─ stt.model_paths    (纯 stdlib,模型版本 + 缓存路径)
-    ├─ stt.downloader     (纯 stdlib,从 ModelScope 直连下载)
+    ├─ modelscope         (官方库的 snapshot_download,只拉 hub base 依赖)
     ├─ onnxruntime        (Microsoft 官方 PyPI 包)
     ├─ yaml               (读 config.yaml 的 frontend_conf)
     └─ numpy
@@ -16,12 +15,11 @@
 
 import io
 import wave
+from pathlib import Path
 
 import numpy as np
 
 from whisper_input.stt.base import BaseSTT
-from whisper_input.stt.downloader import download_model
-from whisper_input.stt.model_paths import find_local_model
 
 _SAMPLE_RATE = 16000
 _BLANK_ID = 0
@@ -66,14 +64,25 @@ class SenseVoiceSTT(BaseSTT):
         if self._session is not None:
             return
 
-        model_dir = find_local_model()
-        if model_dir is None:
-            print("[sensevoice] 未发现本地模型,开始下载...")
-            model_dir = download_model()
+        # 延迟 import 第三方库,让 `from whisper_input.stt import ...` 在
+        # 不真正推理的场景(CLI --help、测试)下不用背 numpy/onnxruntime 启动成本
+        from modelscope import snapshot_download
 
-        print(f"[sensevoice] 加载 SenseVoice ONNX: {model_dir}")
+        print("[sensevoice] 准备 SenseVoice 模型(modelscope snapshot_download)")
+        # 主仓库:ONNX 量化模型 + tokens.json + am.mvn + config.yaml(4 个文件,~231 MB)
+        onnx_dir = Path(snapshot_download("iic/SenseVoiceSmall-onnx"))
+        # 姐妹仓库是 PyTorch 原版,体积 ~900 MB。这里只为取 BPE tokenizer 一个文件,
+        # allow_patterns 限制只下载这一个,避免误拉权重
+        bpe_dir = Path(
+            snapshot_download(
+                "iic/SenseVoiceSmall",
+                allow_patterns=["chn_jpn_yue_eng_ko_spectok.bpe.model"],
+            )
+        )
+        bpe_file = bpe_dir / "chn_jpn_yue_eng_ko_spectok.bpe.model"
 
-        # 延迟 import,避免上游 setup_window 引导进程误触发第三方库加载
+        print(f"[sensevoice] 加载 SenseVoice ONNX: {onnx_dir}")
+
         import onnxruntime as ort
         import yaml
 
@@ -85,26 +94,23 @@ class SenseVoiceSTT(BaseSTT):
 
         self._postprocess = rich_transcription_postprocess
 
-        # 读 config.yaml 的 frontend_conf,然后 override 关键项
         config = yaml.safe_load(
-            (model_dir / "config.yaml").read_text(encoding="utf-8")
+            (onnx_dir / "config.yaml").read_text(encoding="utf-8")
         )
         frontend_conf = dict(config["frontend_conf"])
-        frontend_conf["cmvn_file"] = str(model_dir / "am.mvn")
+        frontend_conf["cmvn_file"] = str(onnx_dir / "am.mvn")
         # 推理时强制 dither=0 保证确定性(config.yaml 里默认没写,WavFrontend
         # 默认是 1.0 会引入噪声扰动)
         frontend_conf["dither"] = 0
         self._frontend = WavFrontend(**frontend_conf)
 
-        self._tokenizer = SentencepiecesTokenizer(
-            bpemodel=str(model_dir / "chn_jpn_yue_eng_ko_spectok.bpe.model")
-        )
+        self._tokenizer = SentencepiecesTokenizer(bpemodel=str(bpe_file))
 
         opts = ort.SessionOptions()
         opts.inter_op_num_threads = 1
         opts.intra_op_num_threads = self.num_threads
         self._session = ort.InferenceSession(
-            str(model_dir / "model_quant.onnx"),
+            str(onnx_dir / "model_quant.onnx"),
             sess_options=opts,
             providers=["CPUExecutionProvider"],
         )
