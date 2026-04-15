@@ -197,35 +197,15 @@ curl -LsSf https://whisper-input.example/install.sh | sh
 
 ---
 
-### 测试套 `tests/`
+### 测试套增强（v2）
 
-**动机**：从 0 轮到 14 轮项目始终没有自动化测试。每次重构靠"手动跑一遍看有没有炸"，14 轮这种大规模删代码尤其风险高 —— Phase 2 删 `stt/downloader.py` 时我靠 grep 确认没人 import，但如果有个 "曾经 import 过后来注释掉但 `.pyc` 还在" 的情况就会炸。有测试套就能自动挡住这种事。
+15 轮搭起了 pytest 框架（`tests/` 下 75 个用例覆盖纯逻辑层 + 带 mock 的边界层 + 端到端 STT 推理 + 默认开启的覆盖率报告 + codecov 上传 + README 徽章，总线覆盖 ~51%），但有几个明显能继续推进的方向。**先做不做都不影响项目正常运行**，列在这里是为了记住来路：
 
-**初版目标覆盖**（不追求完整，只覆盖低挂果）：
+- **macOS CI runner 矩阵**：当前 `build.yml` 只跑 `ubuntu-24.04`。conftest 注入的 fake pynput / evdev 在真 darwin 上是否完全等价于真 pynput 还需要本地 macOS 跑一次确认。如果要彻底保险，加 `macos-latest` 进 matrix —— 代价是 macos runner 比 ubuntu 贵 10×
+- **hotkey 测试升级**：当前测试直接调 `_on_hotkey_press` 等 internal 方法,所以 `hotkey_macos.py` / `hotkey_linux.py` 卡在 54% 覆盖率(`_listen_loop` / `start` / `stop` / `find_keyboard_devices` 都没测)。更接近真实路径的做法是通过 fake `Listener` / fake evdev 设备**注入合成键盘事件**，让 `_listen_loop` / pynput callback 自然驱动状态机。改造后能把覆盖率推到 80%+
+- **STT 多语种 / 边角样本**：v1 只测一条中文(`tests/fixtures/zh.wav`)。`iic/SenseVoiceSmall/example/` 里还有 `en.mp3` / `ja.mp3` / `ko.mp3` / `yue.mp3` 几个官方示例,可以同样转换成 wav fixture,各加一个用例覆盖更多语种 prompt id 路径。也可以试一下噪声 / 长音频 / 多说话人这些边角场景
 
-- **`config_manager.py`**：YAML 默认值合并、文件读写、修改持久化、`_find_project_root()` 的 dev / installed 模式切换
-- **`stt/_postprocess.py`** 的 `rich_transcription_postprocess()`：纯字符串处理函数，已有 FunASR 官方的已知输入 / 输出对，最容易单测
-- **`backends/autostart_macos.py` / `autostart_linux.py`**：`_build_plist()` / `_load_desktop_template()` 的输出应该是确定的字符串，assert 生成的文件内容
-- **`stt/_tokenizer.py`** 可选：SentencePiece 处理纯函数，也能单测
-
-**不覆盖的部分**（初版刻意跳过）：
-
-- **STT 推理路径（`transcribe()`）**：需要真实模型文件 + numpy / onnxruntime / kaldi-native-fbank 运行。本地能跑，CI 上要考虑 ~231 MB 模型的 cache 策略
-- **硬件 I/O**：麦克风、evdev、pynput 键盘事件
-- **Web UI**：`settings_server.py` 的 HTTP handler 可以单测，但交互逻辑大多在 JS 里
-
-**工具**：
-
-- `pytest` + `pytest-mock`（标准选择）
-- `[dependency-groups] dev` 里加进去
-- `.github/workflows/build.yml` 的 lint job 改成 `lint + test`
-
-**未定事项 / spike 要做的事**：
-
-- CI runner 上 Linux 那边 evdev 需要 `/dev/input/` 权限 —— 跑 `autostart_linux.py` 测试时生成 `.desktop` 文件不需要 evdev，但如果未来想测 `hotkey_linux.py` 就要解决这个
-- STT 推理测试是不是要放到一个单独的 optional test suite（`pytest -m slow`）
-
-**scope**：中。初版 ~300 行测试代码 + `pyproject.toml` 加 dev dep + `build.yml` 加一步 `uv run pytest`。
+**scope**：每条都不大,小到一两个小时,大到半天。哪条优先看痛点 —— 如果某次 PR 因为没有 macOS CI 漏掉了一个 darwin-only 回归，就先做第一条；如果某次重构动到 hotkey 状态机想要更扎实的覆盖，就先做第二条。
 
 ---
 

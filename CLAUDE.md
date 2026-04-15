@@ -37,12 +37,26 @@ uv run python -m whisper_input
 # Lint (ruff)
 uv run ruff check .
 
+# Tests (round 15)
+uv run pytest                                # full suite, 75 cases, ~11s (incl. STT smoke), prints coverage
+uv run pytest tests/test_postprocess.py -v   # one file
+uv run pytest --cov-report=term-missing      # show un-hit lines
+uv run pytest --cov-report=html              # generate htmlcov/index.html
+uv run pytest --no-cov                       # turn off coverage (faster for single-test debug)
+uv run pytest --deselect tests/test_sense_voice.py  # skip the STT test if model isn't cached yet
+
 # Build wheel locally (for testing, not for release)
 uv build
 # Releases are cut by pushing a git tag v<version> — see .github/workflows/release.yml
 ```
 
-No automated test suite exists. For STT sanity check, instantiate `whisper_input.stt.sense_voice.SenseVoiceSTT` and feed it a 16 kHz mono WAV.
+Test scope (`tests/`): `config_manager`, `stt/_postprocess`, `version`, `settings_server` (full HTTP roundtrip on a real server bound to a tmp port), the `backends/hotkey_*` 300ms combo state machine (parametrized over both backends), `backends/autostart_*` (plist / .desktop file generation), `backends/input_*` shell-out order, and `stt/sense_voice.py` end-to-end smoke test (loads the real ONNX model and transcribes `tests/fixtures/zh.wav`, a 10.6s self-recorded sample of 出师表 — see `tests/fixtures/README.md` for source / regenerate command). **Not tested**: `recorder.py` (mic), overlays (GTK / Cocoa), `__main__.py` orchestration, real keyboard / TCC permission paths — those still need manual sanity checks. `tests/conftest.py` injects fake `pynput` / `evdev` modules into `sys.modules` so platform-specific backends import on either OS; CI runs ubuntu-only.
+
+Coverage (round 15): overall ~51% line coverage. The covered slice is dense — `stt/sense_voice.py` 100%, `_wav_frontend.py` 97%, `config_manager` / `_postprocess` / `autostart_*` all 90-100%, `settings_server` 90%, `hotkey_*` state machine 54% (only the listen loops / `start` / `stop` are missing). The 0% files are deliberate (`__main__.py`, `recorder.py`, `overlay_*.py`) — adding a line of code under any of them that you then forget to test should be obvious in the next CI run.
+
+The STT smoke test downloads ~231 MB of ONNX + tokenizer to `~/.cache/modelscope/hub/` on first run. CI uses `actions/cache@v4` keyed on `modelscope-sensevoice-v1` to persist this across runs (bump the version to invalidate). Locally the model is usually already cached from running `whisper-input` itself; if not, expect the first `pytest` invocation to be slow.
+
+For STT sanity check, instantiate `whisper_input.stt.sense_voice.SenseVoiceSTT` and feed it a 16 kHz mono WAV.
 
 ## Architecture
 

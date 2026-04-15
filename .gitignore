@@ -17,3 +17,9 @@ config.yaml
 
 # 发版流程写入的 commit hash（dev 模式下从 git 读，PyPI wheel 里不存在）
 src/whisper_input/_commit.txt
+
+# 测试 / 覆盖率工具产物
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml

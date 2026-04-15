@@ -98,4 +98,33 @@ ignore = [
 [dependency-groups]
 dev = [
     "ruff>=0.15.9",
+    "pytest>=8.0",
+    "pytest-cov>=7.1.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# 默认安静模式 + 短 traceback + 每次跑都打印覆盖率
+# 想要详细 missing line / HTML / 关掉 cov 时手动覆盖:
+#   uv run pytest --cov-report=term-missing
+#   uv run pytest --cov-report=html      # 生成 htmlcov/index.html
+#   uv run pytest --no-cov               # 临时关掉(配合 -k 单测调试更快)
+addopts = "-ra --tb=short --cov=whisper_input --cov-report=term"
+
+[tool.coverage.run]
+source = ["src/whisper_input"]
+# branch coverage 太激进,line coverage 看大局已经够用
+branch = false
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+# 这些行不算进未覆盖统计:
+#   - pragma: no cover     显式标记
+#   - if __name__ == ...   入口 guard,只在直接跑脚本时执行
+#   - raise NotImplementedError 抽象方法占位
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
 ]

@@ -1,6 +1,7 @@
 # Whisper Input
 
 [![Build](https://github.com/pkulijing/whisper-input/actions/workflows/build.yml/badge.svg)](https://github.com/pkulijing/whisper-input/actions/workflows/build.yml)
+[![codecov](https://codecov.io/gh/pkulijing/whisper-input/branch/master/graph/badge.svg)](https://codecov.io/gh/pkulijing/whisper-input)
 [![PyPI](https://img.shields.io/pypi/v/whisper-input.svg)](https://pypi.org/project/whisper-input/)
 
 跨平台语音输入工具 —— 按住快捷键说话，松开后自动将识别结果输入到当前焦点窗口。

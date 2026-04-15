@@ -1,7 +1,7 @@
 name: Build
 
-# 14 轮起走 PyPI 分发,这个 workflow 只做 lint(保留文件名是为了不动 README badge
-# 指向)。实际发版由 .github/workflows/release.yml 在 tag 推送时触发。
+# 14 轮起走 PyPI 分发,这个 workflow 跑 lint + test。
+# 实际发版由 .github/workflows/release.yml 在 tag 推送时触发。
 on:
   push:
     branches: [master, refactor/**]
@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  lint:
+  lint-and-test:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -19,3 +19,31 @@ jobs:
 
       - name: Ruff check
         run: uvx ruff check .
+
+      # uv sync 在 ubuntu 上不会装 darwin-only 的 pynput / pyobjc,
+      # tests/conftest.py 注入 fake 模块兜住,所以单 ubuntu runner 就够。
+      - name: Install dev deps
+        run: uv sync --group dev
+
+      # tests/test_sense_voice.py 跑端到端 STT 推理,首次会通过 modelscope
+      # 拉 ~231 MB ONNX + ~377 KB BPE 到 ~/.cache/modelscope/hub。缓存这个目录
+      # 让后续 CI run 跳过下载,key 用固定 v 标记 —— 想强制刷新就 bump 版本号。
+      - name: Cache SenseVoice model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/modelscope/hub
+          key: modelscope-sensevoice-v1
+          restore-keys: modelscope-sensevoice-
+
+      # pyproject.toml 的 addopts 默认带 --cov-report=term,这里追加 xml 给
+      # codecov 上传用。两个 report 都生成。
+      - name: Run tests
+        run: uv run pytest --cov-report=xml --cov-report=term
+
+      # 公开仓库 + Trusted Publishing 模式下 codecov-action 不需要 token。
+      # 首次上传会自动在 codecov.io 创建项目。
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false  # codecov 服务抖动不应该阻挡 PR 合并
