@@ -2,7 +2,7 @@ name: Build
 
 on:
   push:
-    branches: [master, ci-bootstrap]
+    branches: [master, ci-bootstrap, refactor/**]
   workflow_dispatch:
 
 permissions:

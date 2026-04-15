@@ -67,26 +67,30 @@
 
 ## 局限性
 
-- **Phase 8 的手动测试没跑完**。自动化部分全绿(clean `uv sync` / console script / ruff / help 输出 / version / commit / `ConfigManager._resolve_path` / autostart plist 生成 / `.desktop` 模板读取 / shell 脚本 `bash -n` 语法 / setup_window.py 字节码编译),但涉及 UI / 权限 / 外部服务的部分需要人工验证:
-  - [ ] `uv run whisper-input` 实际启动,托盘图标出现,热键录音 → STT → 粘贴链路通
-  - [ ] Web 设置页能打开、改 config、改热键、开关自启
-  - [ ] 自启开关触发后 `~/Library/LaunchAgents/com.whisper-input.plist` 内容正确
-  - [ ] `bash scripts/build.sh` 在 macOS 上跑完,产出 `.app` 和 `.dmg`(~5 分钟,~250MB `python-build-standalone` 下载)
-  - [ ] `.app` 冷启动跑完 `setup_window.py` 三阶段(uv sync / 模型下载 / `python -m whisper_input` 预加载),进托盘
-  - [ ] Linux 机器上 `bash scripts/build.sh` → `sudo dpkg -i` → `whisper-input` trampoline 能一路跑通(我这边没 Linux 盒子)
-- **Dev 模式 Linux autostart 会指向 `/usr/bin/whisper-input`**(`.desktop` 模板里硬编码)。dev 跑的时候 `/usr/bin/whisper-input` 不存在,开机自启会静默失败。不是本轮引入的问题,原来也一样,留着。
+- **Dev 模式(`uv run whisper-input`)完全 work**。自动化和手动都过:console script 启动、托盘、热键 → STT → 粘贴链路、Web 设置页、自启开关、版本/commit 显示,都正常。
+- **macOS `.app` bundle 已知不能用**。.app 冷启动会在 Stage A 的 hatchling editable build 阶段炸,因为 bundle 里只拷了 `pyproject.toml` 没拷 `README.md`(pyproject 声明了 `readme = "README.md"`,validate 阶段 `OSError`)。本来打算 1 行修(把 README.md 也拷进 bundle),但更深层的问题是:**整个 "拷源 + 在首启时 uv sync 把项目当 application 装" 的流程,在 src layout 下根本是个权宜之计**——src layout 的正解是"build 出 wheel,bundle 里只装 wheel,首启从本地 wheel 安装"。1 行修是 patch 在错误架构上,所以**故意不修**,留给 14 轮换路线。
+- **Linux DEB 同样**没在真机上验证,但 build.sh 路径逻辑和 macOS 一致,大概率也会撞 README.md issue。
+- **顺手发现的真 bug 已修**:`_run_pty()` 在用户取消时会 return True,导致 `.deps_sha256` sentinel 被错误写入,下次启动 `deps_up_to_date()` 命中跳过 Stage A,留下半截 venv → Stage C `No module named whisper_input`。修法见 commit `1476b7e`(在两个 setup_window.py 里改成 cancelled 优先返回 False)。这个 bug 重构前就在,只是 application 模式下半截 venv 也能跑,被掩盖。
 - **没加 `tests/`**。本就不在范围内,而且项目从头就没测试套,不是本轮造成的缺口。
 
 ## 后续 TODO
 
-1. **手动 Phase 8 验证**——这是阻塞事项,在真正 push / 发版前必须跑完上面那张清单。打包 CI(GitHub Actions)的回归一并在 Phase 8 里验证,跑通后不需要额外 TODO。
-2. **Linux dev 模式 autostart**——`.desktop` 模板当前硬编码 `Exec=/usr/bin/whisper-input`,dev 开发时切自启会失败。可以在 `set_autostart(True)` 里,如果探测到 dev 项目根,就动态 substitute `Exec=` 为 `.venv/bin/whisper-input` 的绝对路径。小改动,能让 dev 自启成为"真"可用。
-3. **未来考虑 `tests/`**。目前没自动化测试的项目,后续做重大改动时踩坑概率是线性累积的。本轮不做只是因为 scope 要干净,不是说它不该做。
+**14 轮方向决定:放弃 `.app` / `.deb` 手工 bundle,改走 PyPI tool 分发**(`uv tool install whisper-input` / `pipx install whisper-input`)。13 轮把项目变成真 package 是这个转向的必要前提,本身就是 14 轮的铺垫。下面的列表按这个新方向重排:
+
+1. **14 轮:PyPI tool 化**
+   - `uv build --wheel` → `uv publish` 走 PyPI(可能需要先注册 namespace)
+   - 模型下载逻辑保持不变(用户首次 `whisper-input` 时跑 `whisper_input.stt.downloader`),走用户 home 而非 bundle resources
+   - 删 `packaging/`、`scripts/build.sh`、`scripts/run_macos.sh`、`packaging/{macos,debian}/setup_window.py` 这堆 bundle/trampoline 代码
+   - autostart 改成"用户跑一次 `whisper-input --install-autostart` 命令式开启",而不是 .app 安装时自动注册
+   - `python-build-standalone` 也不需要打包了,用户用自己的 uv/pipx 拉 Python
+2. **Linux dev 模式 autostart `.desktop` `Exec=`**(本轮局限性里那条)——14 轮做 `--install-autostart` 时一并解决
+3. **未来考虑 `tests/`**——同样推到 14 轮以后,但优先级低于 PyPI 发布
 
 ### 本轮内已清理的 TODO
 
 - ✅ `config.example.yaml` 的过时描述已改为 ModelScope 231MB 直连
 - ✅ `packaging/debian/postrm` cleanup 死代码已换成 `find ... __pycache__ -exec rm -rf {} +`
+- ✅ `_run_pty()` cancel 返回值 bug 已修(commit `1476b7e`)
 
 ## 相关文档
 
