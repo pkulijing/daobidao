@@ -627,7 +627,13 @@ class SetupWindow:
             self.current_proc.wait()
 
         rc = self.current_proc.returncode
-        if rc != 0 and not self.cancelled:
+        # 用户取消(关窗口)时,subprocess 被 terminate(),rc 必然非零。
+        # 不能 return True —— 否则 caller(_stage_a_run)会把 .deps_sha256
+        # sentinel 写下去,下次启动 deps_up_to_date() 命中,Stage A 被跳过,
+        # 留下半截 venv(没装完 whisper-input)然后 Stage C 直接 ImportError。
+        if self.cancelled:
+            return False
+        if rc != 0:
             self._ui(
                 self._on_error, f"命令失败 (exit {rc})",
             )
