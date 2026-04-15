@@ -130,5 +130,3 @@ Release flow (maintainer):
 1. Bump `version` in `pyproject.toml`, commit, push to master
 2. `git tag v<version> && git push --tags`
 3. `.github/workflows/release.yml` is triggered by the tag, verifies tag matches pyproject version, runs `uv build`, publishes to PyPI via OIDC Trusted Publishing (no API token), and creates a GitHub Release with the dist artifacts attached
-
-First-time setup (one-off): add a pending Trusted Publisher at `https://pypi.org/manage/account/publishing/` (owner=`pkulijing`, repo=`whisper-input`, workflow=`release.yml`, environment=`pypi`) and create a `pypi` environment under Settings → Environments in the GitHub repo.

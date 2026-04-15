@@ -109,16 +109,6 @@ PyPI 分发走 GitHub Actions tag 触发 + Trusted Publishing (OIDC)：
 3. `git tag v0.5.1 && git push --tags`
 4. [`.github/workflows/release.yml`](.github/workflows/release.yml) 自动触发：校验 tag 和 version 一致 → `uv build` → `pypa/gh-action-pypi-publish` 发到 PyPI → 创建 GitHub Release
 
-### 首次发布前的一次性配置
-
-- 在 [pypi.org/manage/account/publishing/](https://pypi.org/manage/account/publishing/) 添加 pending publisher：
-  - PyPI project: `whisper-input`
-  - Owner: `pkulijing`
-  - Repository: `whisper-input`
-  - Workflow filename: `release.yml`
-  - Environment name: `pypi`
-- 在 GitHub repo `Settings → Environments` 下创建 `pypi` 环境
-
 ## 使用方法
 
 1. 启动程序后，按住快捷键开始录音

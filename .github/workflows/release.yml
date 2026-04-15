@@ -1,8 +1,6 @@
 name: Release
 
 # Tag 触发 PyPI 发布,走 Trusted Publishing (OIDC),无需 API token。
-# 首次发布前需要在 pypi.org/manage/account/publishing/ 添加 pending publisher,
-# 以及在 GitHub repo Settings → Environments 下创建 "pypi" 环境。
 #
 # 发版流程:
 #   1. pyproject.toml bump version
