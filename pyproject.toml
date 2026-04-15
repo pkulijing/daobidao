@@ -43,6 +43,10 @@ dependencies = [
     "pygobject>=3.56.2; sys_platform == 'linux'",
     # macOS 专用
     "pynput>=1.7.6; sys_platform == 'darwin'",
+    # overlay_macos.py 直接 import objc / AppKit / Foundation,声明成直接依赖避免
+    # 隐式继承 pynput / pystray 的 transitive pyobjc 拉取。pyobjc-framework-cocoa
+    # 同时提供 AppKit + Foundation 两个命名空间,并自动带上 pyobjc-core (objc)。
+    "pyobjc-framework-cocoa>=10.0; sys_platform == 'darwin'",
     "onnxruntime>=1.24.4",
     "kaldi-native-fbank>=1.22.3",
     "soundfile>=0.13.1",

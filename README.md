@@ -62,7 +62,8 @@ whisper-input
 
 ```bash
 # 装系统依赖
-sudo apt install xdotool xclip pulseaudio-utils libportaudio2 libgirepository-2.0-dev
+sudo apt install xdotool xclip pulseaudio-utils libportaudio2 \
+                 libgirepository-2.0-dev libcairo2-dev gir1.2-gtk-3.0
 
 # 把自己加进 input 组(evdev 读 /dev/input/* 需要)
 sudo usermod -aG input $USER && newgrp input
