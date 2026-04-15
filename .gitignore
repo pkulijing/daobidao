@@ -16,4 +16,4 @@ wheels/
 config.yaml
 
 # 打包时由 build.sh 写入的 commit hash（dev 模式下从 git 读）
-commit.txt
+src/whisper_input/_commit.txt
