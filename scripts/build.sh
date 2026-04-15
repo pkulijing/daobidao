@@ -2,33 +2,37 @@
 # 构建 Whisper Input 安装包 - 自动检测平台
 set -e
 
+# 本脚本可从任意 CWD 调用,统一 cd 到仓库根目录再跑
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$REPO_ROOT"
+
 PKG_NAME="whisper-input"
 VERSION=$(grep '^version' pyproject.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
 COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "")
 
-# 公共源文件列表
-# 注意:原来这里列了 stt_sensevoice.py 这个单文件,现在 STT 后端抽象成了
-# stt/ 包(多个文件),用 SOURCE_STT 目录列表单独拷贝。
-SOURCE_PY=(
-    main.py hotkey.py input_method.py recorder.py
-    config_manager.py settings_server.py
-    version.py overlay.py model_state.py
-)
-SOURCE_STT=(
-    stt/__init__.py stt/base.py stt/model_paths.py
-    stt/downloader.py stt/sense_voice.py
-    stt/_wav_frontend.py stt/_tokenizer.py stt/_postprocess.py
-)
-SOURCE_BACKENDS=(
-    backends/__init__.py
-    backends/hotkey_linux.py backends/hotkey_macos.py
-    backends/input_linux.py backends/input_macos.py
-    backends/autostart_linux.py backends/autostart_macos.py
-    backends/overlay_linux.py backends/overlay_macos.py
-)
-SOURCE_OTHER=(
-    config.example.yaml pyproject.toml uv.lock .python-version
-)
+# src layout 重构后,源树直接整棵拷贝,不再逐文件枚举。
+# 需要同步进 bundle 的文件:
+#   - src/whisper_input/      (所有 Python 源码 + assets 包数据)
+#   - pyproject.toml          (setup_window.py 运行 uv sync 的输入)
+#   - uv.lock                 (依赖锁定)
+#   - .python-version         (uv 选 python 版本的依据)
+# __pycache__/ 和 *.pyc 在 cp 之后统一清理。
+copy_src_tree() {
+    local dest="$1"
+    mkdir -p "$dest"
+    cp -R src "$dest/src"
+    cp pyproject.toml uv.lock .python-version "$dest/"
+    find "$dest/src" -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+    find "$dest/src" -type f -name '*.pyc' -delete 2>/dev/null || true
+    if [ -n "$COMMIT" ]; then
+        echo "$COMMIT" > "$dest/src/whisper_input/_commit.txt"
+    fi
+}
+
+# 图标源(assets 已经迁到 package data)
+SOURCE_PNG="src/whisper_input/assets/whisper-input.png"
+SOURCE_DESKTOP="src/whisper_input/assets/whisper-input.desktop"
 
 # ========================================
 # macOS 构建
@@ -62,9 +66,9 @@ build_macos() {
 
     # 读取 python-build-standalone 元信息
     # shellcheck disable=SC1091
-    source macos/python_dist.txt
+    source packaging/macos/python_dist.txt
     if [ -z "${URL:-}" ] || [ -z "${SHA256:-}" ] || [ -z "${PYTHON_VERSION:-}" ]; then
-        echo "错误: macos/python_dist.txt 缺少必要字段"
+        echo "错误: packaging/macos/python_dist.txt 缺少必要字段"
         exit 1
     fi
     PY_TARBALL="$CACHE_DIR/$(basename "$URL")"
@@ -128,10 +132,9 @@ build_macos() {
     ICONSET_DIR="$BUILD_DIR/AppIcon.iconset"
     mkdir -p "$ICONSET_DIR"
 
-    SOURCE_PNG="assets/whisper-input.png"
     if [ ! -f "$SOURCE_PNG" ]; then
         echo "错误: 未找到图标源文件 $SOURCE_PNG"
-        echo "请先运行: uv run python assets/generate_icon.py"
+        echo "请先运行: uv run python scripts/generate_icon.py"
         exit 1
     fi
 
@@ -151,11 +154,9 @@ build_macos() {
     RES="$APP_BUNDLE/Contents/Resources"
     DEST="$RES/app"
     mkdir -p "$APP_BUNDLE/Contents/MacOS"
-    mkdir -p "$DEST/backends"
-    mkdir -p "$DEST/stt"
-    mkdir -p "$DEST/assets"
+    mkdir -p "$DEST"
 
-    sed "s/VERSION_PLACEHOLDER/$VERSION/g" macos/Info.plist > "$APP_BUNDLE/Contents/Info.plist"
+    sed "s/VERSION_PLACEHOLDER/$VERSION/g" packaging/macos/Info.plist > "$APP_BUNDLE/Contents/Info.plist"
     # 注意:不要在这里就写 Contents/MacOS/whisper-input。一旦 launcher 落地,
     # macOS LaunchServices 会立刻把整个 .app 注册为 managed app,后续 cp -R
     # python 会被 App Management 全部拦截报 EPERM。launcher 留到最后一步写。
@@ -220,17 +221,13 @@ PLIST
     UV_SIZE=$(du -sh "$RES/uv" | cut -f1)
     echo "    已打包 uv ($UV_SIZE)"
 
-    # 应用源码
-    cp "${SOURCE_PY[@]}" "${SOURCE_OTHER[@]}" "$DEST/"
-    cp "${SOURCE_BACKENDS[@]}" "$DEST/backends/"
-    cp "${SOURCE_STT[@]}" "$DEST/stt/"
-    cp assets/whisper-input.png "$DEST/assets/"
-    cp macos/setup_window.py "$DEST/"
-    [ -n "$COMMIT" ] && echo "$COMMIT" > "$DEST/commit.txt"
+    # 应用源码(src layout 整棵 + pyproject 三件套)
+    copy_src_tree "$DEST"
+    cp packaging/macos/setup_window.py "$DEST/"
 
     # launcher 留到最后:它一旦落地就会触发 LaunchServices 注册。即便如此,
     # 此时 staging-bundle 还没改名为 .app,LS 不会把它当 managed app 看。
-    cp macos/whisper-input.sh "$APP_BUNDLE/Contents/MacOS/whisper-input"
+    cp packaging/macos/whisper-input.sh "$APP_BUNDLE/Contents/MacOS/whisper-input"
     chmod 755 "$APP_BUNDLE/Contents/MacOS/whisper-input"
 
     # 整个 staging 完成,mv 改名为 .app。mv 是单次 inode rename,
@@ -271,43 +268,42 @@ PLIST
 # ========================================
 build_linux() {
     BUILD_DIR="build/deb/${PKG_NAME}_${VERSION}"
+    BUILD_OPT="$BUILD_DIR/opt/whisper-input"
 
     echo "正在构建 ${PKG_NAME} v${VERSION} (Linux DEB) ..."
 
     rm -rf "$BUILD_DIR"
 
     mkdir -p "$BUILD_DIR/DEBIAN"
-    mkdir -p "$BUILD_DIR/opt/whisper-input/assets"
-    mkdir -p "$BUILD_DIR/opt/whisper-input/backends"
-    mkdir -p "$BUILD_DIR/opt/whisper-input/stt"
+    mkdir -p "$BUILD_OPT"
     mkdir -p "$BUILD_DIR/usr/bin"
     mkdir -p "$BUILD_DIR/usr/share/applications"
     mkdir -p "$BUILD_DIR/usr/share/icons/hicolor/256x256/apps"
 
-    cp "${SOURCE_PY[@]}" "${SOURCE_OTHER[@]}" "$BUILD_DIR/opt/whisper-input/"
-    cp "${SOURCE_BACKENDS[@]}" "$BUILD_DIR/opt/whisper-input/backends/"
-    cp "${SOURCE_STT[@]}" "$BUILD_DIR/opt/whisper-input/stt/"
-    [ -n "$COMMIT" ] && echo "$COMMIT" > "$BUILD_DIR/opt/whisper-input/commit.txt"
-    # setup_window.py 和 python_dist.txt 是 Linux 运行期必需的引导资源，
-    # 源在 debian/ 与 postinst/control 并列；安装到 /opt/whisper-input/ 根下
-    cp debian/setup_window.py debian/python_dist.txt \
-        "$BUILD_DIR/opt/whisper-input/"
-    cp assets/whisper-input.png "$BUILD_DIR/opt/whisper-input/assets/"
-    cp assets/whisper-input.desktop "$BUILD_DIR/usr/share/applications/"
-    cp assets/whisper-input.png "$BUILD_DIR/usr/share/icons/hicolor/256x256/apps/"
+    # 应用源码(src layout 整棵 + pyproject 三件套)
+    copy_src_tree "$BUILD_OPT"
 
-    sed "s/VERSION_PLACEHOLDER/${VERSION}/g" debian/control > "$BUILD_DIR/DEBIAN/control"
-    cp debian/postinst "$BUILD_DIR/DEBIAN/"
-    cp debian/prerm "$BUILD_DIR/DEBIAN/"
-    cp debian/postrm "$BUILD_DIR/DEBIAN/"
+    # setup_window.py 和 python_dist.txt 是 Linux 运行期必需的引导资源
+    cp packaging/debian/setup_window.py packaging/debian/python_dist.txt \
+        "$BUILD_OPT/"
+
+    # 系统级 icon 和 .desktop(来自 package data)
+    cp "$SOURCE_DESKTOP" "$BUILD_DIR/usr/share/applications/"
+    cp "$SOURCE_PNG" "$BUILD_DIR/usr/share/icons/hicolor/256x256/apps/"
+
+    sed "s/VERSION_PLACEHOLDER/${VERSION}/g" packaging/debian/control \
+        > "$BUILD_DIR/DEBIAN/control"
+    cp packaging/debian/postinst "$BUILD_DIR/DEBIAN/"
+    cp packaging/debian/prerm "$BUILD_DIR/DEBIAN/"
+    cp packaging/debian/postrm "$BUILD_DIR/DEBIAN/"
     chmod 755 "$BUILD_DIR/DEBIAN/postinst"
     chmod 755 "$BUILD_DIR/DEBIAN/prerm"
     chmod 755 "$BUILD_DIR/DEBIAN/postrm"
 
-    cp debian/whisper-input.sh "$BUILD_DIR/usr/bin/whisper-input"
+    cp packaging/debian/whisper-input.sh "$BUILD_DIR/usr/bin/whisper-input"
     chmod 755 "$BUILD_DIR/usr/bin/whisper-input"
 
-    find "$BUILD_DIR/opt/whisper-input" -type f -exec chmod 644 {} \;
+    find "$BUILD_OPT" -type f -exec chmod 644 {} \;
     chmod 644 "$BUILD_DIR/usr/share/applications/whisper-input.desktop"
     chmod 644 "$BUILD_DIR/usr/share/icons/hicolor/256x256/apps/whisper-input.png"
 

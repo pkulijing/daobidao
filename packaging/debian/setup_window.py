@@ -10,11 +10,13 @@
 三阶段（和 macOS 对齐）：
   Stage A — `uv sync --python $PYTHON_VERSION` 装依赖到 user venv（~20MB,
             按 pyproject/uv.lock hash 决定是否跳过）
-  Stage B — stt.downloader 从 ModelScope 下载 SenseVoice ONNX（~231MB,5 个文件,已缓存自然秒过）
-  Stage C — 起 main.py，tail 日志直到 "[sensevoice] 模型加载完成" 后退出窗口
+  Stage B — whisper_input.stt.downloader 从 ModelScope 下载 SenseVoice ONNX
+            （~231MB,5 个文件,已缓存自然秒过）
+  Stage C — 起 python -m whisper_input,tail 日志直到 "[sensevoice] 模型加载完成"
+            后退出窗口
 
 整个过程只有一个 tkinter 窗口，stage 间无缝切换。
-Stage C 的 main.py 用 start_new_session 启动，setup_window 退出后继续运行。
+Stage C 的主程序用 start_new_session 启动，setup_window 退出后继续运行。
 
 注：Linux 比 macOS 多一个"stage 0"——python-build-standalone 下载——
 但 stage 0 发生在 trampoline 层、tkinter 窗口打开之前，仅用 notify-send 反馈，
@@ -398,20 +400,22 @@ class SetupWindow:
         self._append_log("\n==> 阶段 2: 准备 SenseVoice 模型")
 
     def _stage_b_run(self) -> bool:
-        # stt/downloader.py 是纯 stdlib 实现,可以直接在 setup_window 自己
-        # 的进程里(bundled python-build-standalone)运行,不需要起 user venv
-        # 子进程 —— 下载、SHA256 校验、tar.bz2 解压、manifest 落盘全程 stdlib。
+        # whisper_input.stt.downloader 是纯 stdlib 实现,可以直接在 setup_window
+        # 自己的进程里(trampoline 找到的 python-build-standalone)运行,不需要
+        # 起 user venv 子进程 —— 下载、SHA256 校验、manifest 落盘全程 stdlib。
         # 本地已命中就直接返回,零联网。
-        sys.path.insert(0, str(APP_SRC))
+        # 把 src/ 加到 sys.path 让 `import whisper_input` 能找到包(trampoline
+        # python 本身没 install whisper_input,只有 user venv 里才有)。
+        sys.path.insert(0, str(APP_SRC / "src"))
         try:
-            from stt.downloader import (
+            from whisper_input.stt.downloader import (
                 ModelDownloadError,
                 download_model,
             )
         except Exception as e:
             self._ui(
                 self._append_log,
-                f"[loader] 加载 stt.downloader 失败: {e}",
+                f"[loader] 加载 whisper_input.stt.downloader 失败: {e}",
             )
             return False
 
@@ -457,7 +461,7 @@ class SetupWindow:
         )
         return True
 
-    # ---------- stage C: main.py + tail log ----------
+    # ---------- stage C: python -m whisper_input + tail log ----------
 
     def _enter_stage_c(self) -> None:
         self.title_var.set("Whisper Input 初始化 (3/3)")
@@ -467,7 +471,7 @@ class SetupWindow:
         self._append_log("\n==> 阶段 3: 加载模型并启动主程序")
 
     def _stage_c_run(self) -> bool:
-        # 先记录当前日志文件大小，main.py 之后写的内容从这里开始 tail
+        # 先记录当前日志文件大小，主程序之后写的内容从这里开始 tail
         LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
         LOG_FILE.touch(exist_ok=True)
         tail_start_pos = LOG_FILE.stat().st_size
@@ -480,8 +484,11 @@ class SetupWindow:
         for var in ("PYTHONHOME", "PYTHONPATH", "VIRTUAL_ENV"):
             env.pop(var, None)
         try:
+            # user venv 已经装好 whisper-input editable wheel(Stage A 的 uv
+            # sync 产物),这里 `-m whisper_input` 会走 editable install 找到
+            # APP_SRC/src/whisper_input 下的代码。
             self.current_proc = subprocess.Popen(
-                [str(USER_VENV_PYTHON), str(APP_SRC / "main.py")],
+                [str(USER_VENV_PYTHON), "-m", "whisper_input"],
                 cwd=str(APP_SRC),
                 stdout=log_fd, stderr=log_fd,
                 env=env,
@@ -490,10 +497,10 @@ class SetupWindow:
         finally:
             os.close(log_fd)
 
-        log(f"main.py 已启动 (pid={self.current_proc.pid})")
+        log(f"whisper_input 已启动 (pid={self.current_proc.pid})")
         self._ui(
             self._append_log,
-            f"main.py 已启动 (pid={self.current_proc.pid})",
+            f"whisper_input 已启动 (pid={self.current_proc.pid})",
         )
 
         return self._tail_log_for_marker(

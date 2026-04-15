@@ -9,6 +9,10 @@ if [[ "$(uname)" != "Linux" ]]; then
     exit 1
 fi
 
+# 切到仓库根目录
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR/.."
+
 echo "=== Whisper Input 安装 ==="
 echo ""
 
@@ -54,10 +58,8 @@ else
 fi
 
 # 安装 Python 依赖
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 echo ""
 echo "4. 使用 uv 安装 Python 依赖..."
-cd "$SCRIPT_DIR"
 
 # 迁移到 sherpa-onnx + SenseVoice ONNX 后,推理后端是 onnxruntime(CPU),
 # 不再需要 torch / cuda / cpu 变体分流。所有依赖走清华源,国内几十秒完成。
@@ -67,13 +69,12 @@ echo ""
 echo "=== 安装完成 ==="
 echo ""
 echo "使用方法:"
-echo "  cd $SCRIPT_DIR"
 echo ""
 echo "  # 运行（需要 sudo 或 input 组权限读取键盘设备）"
-echo "  sudo $(which uv) run python main.py"
+echo "  sudo $(which uv) run whisper-input"
 echo ""
 echo "  # 或使用 input 组权限（重新登录后）"
-echo "  uv run python main.py"
+echo "  uv run whisper-input"
 echo ""
 echo "  # 指定热键"
-echo "  uv run python main.py -k KEY_RIGHTALT"
+echo "  uv run whisper-input -k KEY_RIGHTALT"

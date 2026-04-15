@@ -3,6 +3,10 @@
 
 set -e
 
+# 切到仓库根目录
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR/.."
+
 echo "========================================="
 echo "  Whisper Input - macOS 环境配置"
 echo "========================================="
@@ -52,7 +56,7 @@ echo "  安装完成！"
 echo "========================================="
 echo ""
 echo "运行方式："
-echo "  uv run python main.py"
+echo "  uv run whisper-input"
 echo ""
 echo "⚠️  首次运行需要授予以下权限："
 echo ""

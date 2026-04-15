@@ -4,6 +4,10 @@
 # 使辅助功能/输入监控权限列表中显示名称和图标
 set -e
 
+# 切到仓库根目录
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR/.."
+
 VENV_PYTHON=".venv/bin/python"
 HELPER_APP=".venv/Whisper Input.app"
 WHISPER_BIN="$HELPER_APP/Contents/MacOS/whisper-input"
@@ -29,15 +33,16 @@ if [ ! -f "$WHISPER_BIN" ] || [ "$VENV_PYTHON" -nt "$WHISPER_BIN" ]; then
     ln -sf "$REAL_LIB"/libpython*.dylib "$HELPER_LIB/"
 
     # 从 PNG 生成 .icns 图标
-    if [ -f "assets/whisper-input.png" ]; then
+    ICON_PNG="src/whisper_input/assets/whisper-input.png"
+    if [ -f "$ICON_PNG" ]; then
         ICONSET_DIR="$HELPER_APP/Contents/Resources/AppIcon.iconset"
         mkdir -p "$ICONSET_DIR"
         for size in 16 32 128 256 512; do
-            sips -z $size $size "assets/whisper-input.png" \
+            sips -z $size $size "$ICON_PNG" \
                 --out "$ICONSET_DIR/icon_${size}x${size}.png" >/dev/null
             double=$((size * 2))
             if [ $double -le 1024 ]; then
-                sips -z $double $double "assets/whisper-input.png" \
+                sips -z $double $double "$ICON_PNG" \
                     --out "$ICONSET_DIR/icon_${size}x${size}@2x.png" >/dev/null
             fi
         done
@@ -80,4 +85,4 @@ fi
 export PYTHONHOME="$PYTHON_HOME"
 export PYTHONPATH=$("$VENV_PYTHON" -c "import site; print(site.getsitepackages()[0])")
 
-exec "$WHISPER_BIN" main.py "$@"
+exec "$WHISPER_BIN" -m whisper_input "$@"

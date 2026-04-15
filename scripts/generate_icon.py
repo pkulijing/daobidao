@@ -68,9 +68,13 @@ def generate_icon(size: int = 256) -> Image.Image:
 
 
 if __name__ == "__main__":
-    import os
+    from pathlib import Path
 
-    output_path = os.path.join(os.path.dirname(__file__), "whisper-input.png")
+    # 图标作为 package data 落在 src/whisper_input/assets/
+    repo_root = Path(__file__).resolve().parent.parent
+    output_path = (
+        repo_root / "src" / "whisper_input" / "assets" / "whisper-input.png"
+    )
     icon = generate_icon(1024)
     icon.save(output_path, "PNG")
     print(f"图标已保存: {output_path}")
