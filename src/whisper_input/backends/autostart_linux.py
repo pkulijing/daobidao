@@ -1,7 +1,7 @@
 """Linux 自启动管理 - 使用 XDG autostart (.desktop 文件)。"""
 
 import os
-import shutil
+from importlib.resources import files
 
 # 自启动文件路径
 AUTOSTART_DIR = os.path.join(
@@ -10,15 +10,17 @@ AUTOSTART_DIR = os.path.join(
 )
 AUTOSTART_FILE = os.path.join(AUTOSTART_DIR, "whisper-input.desktop")
 
-# .desktop 文件来源（安装模式 → 开发模式）
-DESKTOP_SOURCES = [
-    "/usr/share/applications/whisper-input.desktop",
-    os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "assets",
-        "whisper-input.desktop",
-    ),
-]
+# 系统级 .desktop(DEB 安装会放到这里,Exec 已指向 /usr/bin/whisper-input)
+SYSTEM_DESKTOP = "/usr/share/applications/whisper-input.desktop"
+
+
+def _load_desktop_template() -> str:
+    """优先读 DEB 装好的系统文件,其次读 package data 里的模板。"""
+    if os.path.exists(SYSTEM_DESKTOP):
+        with open(SYSTEM_DESKTOP, encoding="utf-8") as f:
+            return f.read()
+    template = files("whisper_input.assets") / "whisper-input.desktop"
+    return template.read_text(encoding="utf-8")
 
 
 def is_autostart_enabled() -> bool:
@@ -30,20 +32,8 @@ def set_autostart(enabled: bool) -> None:
     """设置开机自启动。"""
     if enabled:
         os.makedirs(AUTOSTART_DIR, exist_ok=True)
-        for source in DESKTOP_SOURCES:
-            if os.path.exists(source):
-                shutil.copy2(source, AUTOSTART_FILE)
-                return
-        # 没有现成的 .desktop 文件，生成一个最小版本
+        content = _load_desktop_template()
         with open(AUTOSTART_FILE, "w", encoding="utf-8") as f:
-            f.write(
-                "[Desktop Entry]\n"
-                "Type=Application\n"
-                "Name=Whisper Input\n"
-                "Name[zh_CN]=语音输入\n"
-                "Exec=/usr/bin/whisper-input\n"
-                "Terminal=false\n"
-                "X-GNOME-Autostart-enabled=true\n"
-            )
+            f.write(content)
     elif os.path.exists(AUTOSTART_FILE):
         os.remove(AUTOSTART_FILE)

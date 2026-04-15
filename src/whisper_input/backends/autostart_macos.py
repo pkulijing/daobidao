@@ -14,8 +14,9 @@ def _bundle_trampoline() -> str | None:
     """若当前代码跑在已安装的 .app bundle 内，返回外层 trampoline 路径。
 
     .app 里的布局为：
-        <Bundle>.app/Contents/MacOS/whisper-input       ← 外层 trampoline（shell）
-        <Bundle>.app/Contents/Resources/app/backends/autostart_macos.py  ← 本文件
+        <Bundle>.app/Contents/MacOS/whisper-input            ← 外层 trampoline
+        <Bundle>.app/Contents/Resources/app/src/whisper_input/backends/
+                                          autostart_macos.py ← 本文件
     """
     here = os.path.abspath(__file__)
     marker = "/Contents/Resources/app/"
@@ -31,17 +32,17 @@ def _program_arguments() -> list[str]:
     """返回 plist 中 ProgramArguments 使用的命令行。
 
     - 已安装的 .app：直接调外层 trampoline，让 TCC 权限正确归属到 bundle，
-      并走完 setup_window → main.py 的完整流程。
-    - 开发模式：退回到当前解释器 + 仓库里的 main.py。
+      并走完 setup_window → python -m whisper_input 的完整流程。
+    - 开发模式：优先用 venv 里的 whisper-input console script,
+      失败退回到 `python -m whisper_input`。
     """
     launcher = _bundle_trampoline()
     if launcher:
         return [launcher]
-    main_path = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "main.py",
-    )
-    return [sys.executable, main_path]
+    venv_script = os.path.join(sys.prefix, "bin", "whisper-input")
+    if os.path.isfile(venv_script):
+        return [venv_script]
+    return [sys.executable, "-m", "whisper_input"]
 
 
 def _xml_escape(text: str) -> str:

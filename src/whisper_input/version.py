@@ -2,32 +2,29 @@
 
 import subprocess
 from importlib.metadata import PackageNotFoundError, version
-from pathlib import Path
-
-_HERE = Path(__file__).parent
+from importlib.resources import files
 
 try:
     __version__ = version("whisper-input")
 except PackageNotFoundError:
-    # 开发模式或未安装时，从 pyproject.toml 解析
-    import re
-
-    _toml = _HERE / "pyproject.toml"
-    _m = re.search(r'^version\s*=\s*"(.+?)"', _toml.read_text(), re.M)
-    __version__ = _m.group(1) if _m else "dev"
+    __version__ = "dev"
 
 
 def _read_commit() -> str:
-    # 打包构建时由 build.sh 写入 commit.txt
-    commit_file = _HERE / "commit.txt"
-    if commit_file.exists():
-        c = commit_file.read_text().strip()
-        if c:
-            return c
-    # 开发模式从 git 读取
+    # 打包构建时由 build.sh 写入 _commit.txt 到包数据里
     try:
+        commit_file = files("whisper_input") / "_commit.txt"
+        if commit_file.is_file():
+            c = commit_file.read_text().strip()
+            if c:
+                return c
+    except (FileNotFoundError, ModuleNotFoundError, OSError):
+        pass
+    # 开发模式:从包文件所在目录向上找 .git
+    try:
+        pkg_dir = str(files("whisper_input"))
         r = subprocess.run(
-            ["git", "-C", str(_HERE), "rev-parse", "HEAD"],
+            ["git", "-C", pkg_dir, "rev-parse", "HEAD"],
             capture_output=True,
             text=True,
             timeout=2,

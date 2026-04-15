@@ -2,24 +2,24 @@
 
 import os
 import shutil
+from importlib.resources import as_file, files
+from pathlib import Path
 
 import yaml
 
 from whisper_input.backends import IS_MACOS
 
-# 配置目录（按平台）
+# 用户配置目录（按平台,installed / bundled 模式使用）
 if IS_MACOS:
     CONFIG_DIR = os.path.join(
         os.path.expanduser("~/Library/Application Support"),
         "Whisper Input",
     )
-    INSTALL_DIR = os.path.dirname(os.path.abspath(__file__))
 else:
     CONFIG_DIR = os.path.join(
         os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")),
         "whisper-input",
     )
-    INSTALL_DIR = "/opt/whisper-input"
 
 # 默认配置（按平台）
 DEFAULT_CONFIG = {
@@ -73,13 +73,39 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return result
 
 
+def _find_project_root() -> Path | None:
+    """Dev 模式探测:从 whisper_input 包目录向上找,返回同时包含
+    .git/ 和 pyproject.toml 的仓库根目录。找不到则为已安装/打包模式。
+    """
+    pkg_file = files("whisper_input") / "__init__.py"
+    try:
+        pkg_dir = Path(str(pkg_file)).parent
+    except (TypeError, OSError):
+        return None
+    for candidate in [pkg_dir, *pkg_dir.parents]:
+        if (
+            (candidate / ".git").is_dir()
+            and (candidate / "pyproject.toml").is_file()
+        ):
+            return candidate
+    return None
+
+
+def _copy_example_config(dest: str) -> None:
+    """把 package 里的 config.example.yaml 拷贝到指定路径。"""
+    example = files("whisper_input.assets") / "config.example.yaml"
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    with as_file(example) as src:
+        shutil.copy2(src, dest)
+
+
 class ConfigManager:
     """配置管理器，支持开发模式和安装模式。
 
     路径解析优先级：
     1. 命令行指定的路径
-    2. 项目目录下的 config.yaml（开发模式）
-    3. ~/.config/whisper-input/config.yaml（安装模式）
+    2. 仓库根目录下的 config.yaml（开发模式,通过 .git + pyproject.toml 探测）
+    3. ~/.config/whisper-input/config.yaml（安装/打包模式）
     """
 
     def __init__(self, config_path: str | None = None):
@@ -94,34 +120,18 @@ class ConfigManager:
         if config_path:
             return os.path.abspath(config_path)
 
-        project_dir = os.path.dirname(os.path.abspath(__file__))
-
-        # 开发模式：项目目录下的 config.yaml
-        project_config = os.path.join(project_dir, "config.yaml")
-        if os.path.exists(project_config):
+        # 开发模式:仓库根目录的 config.yaml
+        project_root = _find_project_root()
+        if project_root is not None:
+            project_config = str(project_root / "config.yaml")
+            if not os.path.exists(project_config):
+                _copy_example_config(project_config)
             return project_config
 
-        # 开发模式：config.yaml 不存在，从 config.example.yaml 复制
-        example_config = os.path.join(project_dir, "config.example.yaml")
-        if os.path.exists(example_config):
-            shutil.copy2(example_config, project_config)
-            return project_config
-
-        # 安装模式：平台配置目录
+        # 安装/打包模式:平台用户配置目录
         user_config = os.path.join(CONFIG_DIR, "config.yaml")
-        if os.path.exists(user_config):
-            return user_config
-
-        # 配置不存在，从安装目录的样例配置拷贝
-        install_config = os.path.join(
-            INSTALL_DIR, "config.example.yaml"
-        )
-        if os.path.exists(install_config):
-            os.makedirs(CONFIG_DIR, exist_ok=True)
-            shutil.copy2(install_config, user_config)
-            return user_config
-
-        # 都没有，使用平台配置目录路径（将写入默认配置）
+        if not os.path.exists(user_config):
+            _copy_example_config(user_config)
         return user_config
 
     @property
