@@ -61,8 +61,8 @@
 ```bash
 git clone <repo-url>
 cd whisper-input
-bash setup_macos.sh
-uv run python main.py
+bash scripts/setup_macos.sh
+uv run whisper-input
 ```
 
 首次运行需要在「系统设置 > 隐私与安全性」中授予：
@@ -74,15 +74,15 @@ uv run python main.py
 ```bash
 git clone <repo-url>
 cd whisper-input
-bash setup_linux.sh
+bash scripts/setup_linux.sh
 ```
 
-`setup_linux.sh` 会自动检查并安装系统依赖（xdotool、xclip、libportaudio2 等），将当前用户加入 `input` 组，然后用 `uv sync` 安装 Python 依赖（~20 MB，全部走清华源，国内几十秒）。
+`scripts/setup_linux.sh` 会自动检查并安装系统依赖（xdotool、xclip、libportaudio2 等），将当前用户加入 `input` 组，然后用 `uv sync` 安装 Python 依赖（~20 MB，全部走清华源，国内几十秒）。
 
 #### DEB 安装包
 
 ```bash
-bash build.sh
+bash scripts/build.sh
 sudo apt install ./build/deb/whisper-input_<version>.deb
 ```
 
@@ -99,14 +99,14 @@ sudo apt install ./build/deb/whisper-input_<version>.deb
 ### 运行
 
 ```bash
-uv run python main.py
+uv run whisper-input
 
 # 指定快捷键
-uv run python main.py -k KEY_FN          # macOS: Fn/Globe 键
-uv run python main.py -k KEY_RIGHTALT    # Linux: 右 Alt 键
+uv run whisper-input -k KEY_FN          # macOS: Fn/Globe 键
+uv run whisper-input -k KEY_RIGHTALT    # Linux: 右 Alt 键
 
 # 更多选项
-uv run python main.py --help
+uv run whisper-input --help
 ```
 
 启动后会自动打开浏览器设置页面，也可通过系统托盘图标访问。
@@ -141,17 +141,20 @@ uv run python main.py --help
 
 ## 技术架构
 
+整个项目采用 src layout,所有 Python 代码在 `src/whisper_input/` 下,是一个
+可 `pip install -e .` 安装的真 package。入口点是 console script
+`whisper-input`(等价于 `python -m whisper_input`)。
+
 ```
-按住快捷键 → HotkeyListener (backends/) → AudioRecorder (sounddevice)
-松开快捷键 → stt.SenseVoiceSTT (onnxruntime) → InputMethod (backends/)
-                                               → 文本输入到焦点窗口
+按住快捷键 → HotkeyListener (whisper_input.backends) → AudioRecorder (sounddevice)
+松开快捷键 → stt.SenseVoiceSTT (onnxruntime) → InputMethod → 文本输入到焦点窗口
 ```
 
-平台后端（`backends/`）运行时按 `sys.platform` 自动选择：
+平台后端（`whisper_input.backends`）运行时按 `sys.platform` 自动选择：
 - **Linux**: evdev 读键盘事件 + xclip/xdotool 剪贴板粘贴
 - **macOS**: pynput 全局键盘监听 + pbcopy/pbpaste + Cmd+V 粘贴
 
-STT 推理层（`stt/`）：
+STT 推理层（`whisper_input.stt`）：
 - 模型：达摩院官方 `iic/SenseVoiceSmall-onnx`（量化版），从 ModelScope 国内 CDN 下载
 - 运行时：Microsoft 官方 `onnxruntime`，不依赖 torch
 - 特征提取、BPE 解码、meta 标签后处理：从达摩院官方 `funasr_onnx` 包移植（MIT 协议，~250 行纯 Python），和 FunASR 位对齐

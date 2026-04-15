@@ -5,8 +5,8 @@
 支持中英文混合输入，使用本地 SenseVoice 模型。
 
 用法:
-    python main.py                    # 使用默认配置
-    python main.py -k KEY_RIGHTALT    # 使用右Alt键
+    uv run whisper-input                 # 使用默认配置
+    uv run whisper-input -k KEY_RIGHTALT  # 使用右Alt键
 """
 # ruff: noqa: E402
 # 本文件需要在 import 之间执行环境变量配置（GI_TYPELIB_PATH、

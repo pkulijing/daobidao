@@ -6,7 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Whisper Input is a cross-platform desktop voice input tool (Linux + macOS): hold a hotkey, speak, release to have speech transcribed and typed into the focused window. Uses SenseVoice-Small ONNX (DAMO Academy's official quantized release on ModelScope, loaded via Microsoft's `onnxruntime`, no PyTorch, no sherpa-onnx) for local STT, and clipboard-based paste for text input.
 
-Platform-specific backends in `backends/`:
+Project uses **src layout**: all Python code lives under `src/whisper_input/` as a single installable distribution. `uv sync` installs it as an editable wheel; the `whisper-input` console script (or `python -m whisper_input`) is the only entry point. Dev/setup scripts live in `scripts/`, packaging artifacts in `packaging/`.
+
+Platform-specific backends in `src/whisper_input/backends/`:
 - **Linux**: evdev for keyboard events, xclip+xdotool for text input, XDG autostart
 - **macOS**: pynput for keyboard events and text input, LaunchAgents for autostart
 
@@ -14,66 +16,70 @@ Platform-specific backends in `backends/`:
 
 ```bash
 # Install dependencies (macOS)
-bash setup_macos.sh
+bash scripts/setup_macos.sh
 # or manually:
 uv sync
 
 # Install dependencies (Linux)
-bash setup_linux.sh
+bash scripts/setup_linux.sh
 # or manually:
 uv sync
 
 # Run
-uv run python main.py
-uv run python main.py -k KEY_FN           # custom hotkey (macOS Fn key)
-uv run python main.py -k KEY_RIGHTALT     # custom hotkey
-uv run python main.py --no-tray           # no system tray
-uv run python main.py --no-preload        # skip model preload
-uv run python main.py -c /path/config.yaml
+uv run whisper-input
+uv run whisper-input -k KEY_FN           # custom hotkey (macOS Fn key)
+uv run whisper-input -k KEY_RIGHTALT     # custom hotkey
+uv run whisper-input --no-tray           # no system tray
+uv run whisper-input --no-preload        # skip model preload
+uv run whisper-input -c /path/config.yaml
+# Equivalent invocation (bypasses the console script wrapper):
+uv run python -m whisper_input
 
 # Lint (ruff)
 uv run ruff check .
 
 # Build package (macOS .app / Linux DEB — auto-detects platform)
-bash build.sh
+bash scripts/build.sh
 ```
 
-No automated test suite exists. For STT sanity check, run the five official test wavs (zh/en/ja/ko/yue) under `<user-data-dir>/models/sherpa-onnx-sense-voice-*/test_wavs/` through `stt.sense_voice.SenseVoiceSTT` after first download.
+No automated test suite exists. For STT sanity check, instantiate `whisper_input.stt.sense_voice.SenseVoiceSTT` and feed it the five official test wavs (zh/en/ja/ko/yue) under `<user-data-dir>/models/iic-SenseVoiceSmall-onnx/test_wavs/` after the first download.
 
 ## Architecture
 
-Event-driven pipeline orchestrated by `WhisperInput` in `main.py`:
+Event-driven pipeline orchestrated by `WhisperInput` in `src/whisper_input/__main__.py`:
 
 ```
-HotkeyListener (backends/) → AudioRecorder (sounddevice, 16kHz mono)
-                            → stt.SenseVoiceSTT (onnxruntime, SenseVoice ONNX)
-                            → InputMethod (backends/, clipboard paste)
+HotkeyListener (whisper_input.backends) → AudioRecorder (sounddevice, 16kHz mono)
+                                        → whisper_input.stt.SenseVoiceSTT (onnxruntime)
+                                        → InputMethod (whisper_input.backends, clipboard paste)
 ```
 
-Key modules:
-- **main.py** — Entry point, CLI args, `WhisperInput` controller, system tray setup
-- **hotkey.py** — Dispatcher: imports `HotkeyListener` from platform backend
-- **input_method.py** — Dispatcher: imports `type_text` from platform backend
-- **backends/__init__.py** — Platform detection: `IS_LINUX`, `IS_MACOS`
-- **backends/hotkey_linux.py** — evdev keyboard monitoring with 300ms combo-key detection
-- **backends/hotkey_macos.py** — pynput global keyboard listener with same combo-key logic
-- **backends/input_linux.py** — xclip + xdotool Ctrl+V paste
-- **backends/input_macos.py** — pbcopy/pbpaste + pynput Cmd+V paste
-- **backends/autostart_linux.py** — XDG .desktop file autostart
-- **backends/autostart_macos.py** — LaunchAgents plist autostart
-- **recorder.py** — `AudioRecorder`: sounddevice capture → WAV bytes
-- **stt/** — STT backend package (pluggable):
+Key modules (all paths relative to `src/whisper_input/`):
+- **`__main__.py`** — Entry point, CLI args, `WhisperInput` controller, system tray setup. Exposes `main()` for the console script.
+- **`hotkey.py`** — Dispatcher: imports `HotkeyListener` from platform backend
+- **`input_method.py`** — Dispatcher: imports `type_text` from platform backend
+- **`overlay.py`** — Dispatcher: imports `RecordingOverlay` from platform backend
+- **`backends/__init__.py`** — Platform detection: `IS_LINUX`, `IS_MACOS`
+- **`backends/hotkey_linux.py`** — evdev keyboard monitoring with 300ms combo-key detection
+- **`backends/hotkey_macos.py`** — pynput global keyboard listener with same combo-key logic
+- **`backends/input_linux.py`** — xclip + xdotool Ctrl+V paste
+- **`backends/input_macos.py`** — pbcopy/pbpaste + pynput Cmd+V paste
+- **`backends/autostart_linux.py`** — XDG .desktop file autostart (template read via `importlib.resources` from `whisper_input.assets`)
+- **`backends/autostart_macos.py`** — LaunchAgents plist autostart; dev mode points `ProgramArguments` at `.venv/bin/whisper-input`, bundled mode at the outer `.app` trampoline
+- **`recorder.py`** — `AudioRecorder`: sounddevice capture → WAV bytes
+- **`stt/`** — STT backend package (pluggable):
   - `stt/base.py` — `BaseSTT` abstract class (`load` + `transcribe`)
   - `stt/sense_voice.py` — SenseVoice-Small ONNX inference via `onnxruntime` + the ported `WavFrontend` / `SentencepiecesTokenizer` / `rich_transcription_postprocess` classes
   - `stt/_wav_frontend.py` — MIT-licensed port of `funasr_onnx/utils/frontend.py` (DAMO Speech Lab), the bit-aligned feature extraction pipeline (fbank + LFR + CMVN) used at SenseVoice training time
   - `stt/_tokenizer.py` — MIT-licensed port of `funasr_onnx/utils/sentencepiece_tokenizer.py`, thin wrapper over Google's `sentencepiece` SentencePieceProcessor
   - `stt/_postprocess.py` — MIT-licensed port of `funasr_onnx/utils/postprocess_utils.py` `rich_transcription_postprocess` (cleans SenseVoice meta tags `<|zh|>`/`<|HAPPY|>`/... into final text + emoji)
   - `stt/model_paths.py` — model version lock, ModelScope URLs for 5 files, SHA256 list, cache paths, manifest (stdlib-only)
-  - `stt/downloader.py` — sequential ModelScope downloader + per-file SHA256 verification (stdlib-only, callable from setup_window bootstrap)
+  - `stt/downloader.py` — sequential ModelScope downloader + per-file SHA256 verification (stdlib-only, callable from `packaging/{macos,debian}/setup_window.py` bootstrap)
   - `stt/__init__.py` — `create_stt(engine, config)` factory (lazy imports so `stt.downloader` and `stt.model_paths` can be imported without numpy/onnxruntime)
-- **model_state.py** — Compatibility shim that re-exports `find_local_model` / `save_state` from `stt.model_paths` for legacy call sites
-- **config_manager.py** — YAML config with platform-aware paths and defaults
-- **settings_server.py** — Built-in HTTP server serving web UI + REST API for settings
+- **`config_manager.py`** — YAML config with platform-aware paths and defaults; dev mode detects repo root via `.git` + `pyproject.toml` marker, reads example config from `whisper_input.assets` via `importlib.resources`
+- **`settings_server.py`** — Built-in HTTP server serving web UI + REST API for settings
+- **`version.py`** — `__version__` from `importlib.metadata.version("whisper-input")`, `__commit__` from package-data `_commit.txt` (written by build.sh) or `git rev-parse HEAD` fallback
+- **`assets/`** — Package data: `whisper-input.png` (tray icon), `whisper-input.desktop` (Linux autostart template), `config.example.yaml`. Accessed via `importlib.resources.files("whisper_input.assets")`.
 
 ## Key Technical Decisions
 
@@ -102,7 +108,7 @@ Managed with `uv`. All packages come from the Tsinghua PyPI mirror — first-tim
 
 No torch, no torchaudio, no funasr, no sherpa-onnx, no cuda/cpu extras. Linux does not distinguish GPU/CPU variants anymore.
 
-Model files (~231 MB total) are downloaded at first launch directly from ModelScope via `stt/downloader.py`. Five files land in `<user-data-dir>/models/iic-SenseVoiceSmall-onnx/`:
+Model files (~231 MB total) are downloaded at first launch directly from ModelScope via `whisper_input.stt.downloader`. Five files land in `<user-data-dir>/models/iic-SenseVoiceSmall-onnx/`:
 
 | File | Source repo | Size |
 | --- | --- | --- |
@@ -118,5 +124,5 @@ After one successful download the app is fully offline. `find_local_model()` kee
 
 When DAMO pushes a new ONNX release:
 1. Note the new revision / SHA256 of every file (ModelScope repo files API returns them)
-2. Update `stt/model_paths.py` — `MODEL_VERSION` (new version tag, decides local cache dir name via `MODEL_DIR_NAME`) and each entry in `MODEL_FILES` (size + SHA256)
+2. Update `src/whisper_input/stt/model_paths.py` — `MODEL_VERSION` (new version tag, decides local cache dir name via `MODEL_DIR_NAME`) and each entry in `MODEL_FILES` (size + SHA256)
 3. Old clients on old code keep using the old cached dir; new clients download the new version into a separate directory, preserving upgrade safety
