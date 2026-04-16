@@ -593,7 +593,7 @@ wheels = [
 
 [[package]]
 name = "whisper-input"
-version = "0.6.0b2"
+version = "0.6.0"
 source = { editable = "." }
 dependencies = [
     { name = "evdev", marker = "sys_platform == 'linux'" },
