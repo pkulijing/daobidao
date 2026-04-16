@@ -30,8 +30,8 @@ jobs:
       - name: Install Linux GTK / cairo build deps (cached)
         uses: awalsh128/cache-apt-pkgs-action@v1
         with:
-          packages: libcairo2-dev libgirepository-2.0-dev gir1.2-gtk-3.0
-          version: 1.0
+          packages: libcairo2-dev libgirepository-2.0-dev gir1.2-gtk-3.0 gir1.2-ayatanaappindicator3-0.1
+          version: 1.1
 
       # uv sync 在 ubuntu 上不会装 darwin-only 的 pynput / pyobjc,
       # tests/conftest.py 注入 fake 模块兜住,所以单 ubuntu runner 就够。

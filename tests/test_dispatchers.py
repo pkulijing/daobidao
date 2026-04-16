@@ -9,9 +9,9 @@ backend 实现。覆盖率工具把它们当独立代码看,所以加一个 smok
 办法用 sys.modules 注入兜住的重型原生依赖。overlay 路径的覆盖率永远
 是 0,这是有意识的取舍(见 PROMPT.md 的"非目标"段)。
 
-`whisper_input.tray` 同理 —— 两个后端都在 import 时拉 pystray + PIL,
-macOS 端还拉 AppKit / Foundation。CI 只跑 ubuntu,import tray_linux 需要
-pystray/Pillow（已在 deps 里），所以 Linux CI 上可以测 tray dispatcher。
+`whisper_input.tray` —— Linux 端 pystray 在 import 时需要
+AyatanaAppIndicator3 GObject introspection 命名空间,CI 通过 apt 装
+gir1.2-ayatanaappindicator3-0.1 提供。
 """
 
 
