@@ -229,6 +229,12 @@ def main():
             action="store_true",
             help="安装 macOS .app bundle（解决 TCC 权限显示问题）",
         )
+        parser.add_argument(
+            "--uninstall",
+            action="store_true",
+            help="清理 .app bundle、LaunchAgent、TCC 授权"
+            "（之后再运行 uv tool uninstall whisper-input）",
+        )
     args = parser.parse_args()
 
     # macOS: 处理 --install-app 和 bundle 自动安装/重定向
@@ -240,6 +246,14 @@ def main():
             launch_via_bundle,
             update_venv_path,
         )
+
+        if getattr(args, "uninstall", False):
+            from whisper_input.backends.app_bundle_macos import (
+                uninstall_cleanup,
+            )
+
+            uninstall_cleanup()
+            return
 
         if getattr(args, "install_app", False):
             install_app_bundle()

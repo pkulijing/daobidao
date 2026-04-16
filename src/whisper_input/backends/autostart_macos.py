@@ -14,7 +14,8 @@ def _program_arguments() -> list[str]:
     """返回 plist 中 ProgramArguments 使用的命令行。
 
     优先级：
-    1. .app bundle 已安装 → open -g -a（TCC 显示 Whisper Input）
+    1. .app bundle 已安装 → 直接调用 .app 内的可执行文件
+       （用 open -a 的话，macOS 登录项会显示 "open" 而非 app 名称）
     2. venv console script → 直接调用
     3. python -m whisper_input → 兜底
     """
@@ -24,7 +25,11 @@ def _program_arguments() -> list[str]:
     )
 
     if is_app_bundle_installed():
-        return ["/usr/bin/open", "-g", "-a", get_app_bundle_path()]
+        exe = os.path.join(
+            get_app_bundle_path(), "Contents", "MacOS",
+            "whisper-input",
+        )
+        return [exe]
 
     venv_script = os.path.join(sys.prefix, "bin", "whisper-input")
     if os.path.isfile(venv_script):

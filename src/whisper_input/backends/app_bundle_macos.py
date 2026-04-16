@@ -181,3 +181,103 @@ def restart_via_bundle() -> None:
     import time
     time.sleep(0.5)
     os._exit(0)
+
+
+def _confirm(prompt: str) -> bool:
+    """交互式确认（y/N）。"""
+    try:
+        answer = input(f"{prompt} [y/N] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return False
+    return answer in ("y", "yes")
+
+
+def uninstall_cleanup() -> None:
+    """卸载前清理，供 `whisper-input --uninstall` 调用。
+
+    自动清理：.app bundle、LaunchAgent、TCC 授权、venv-path。
+    交互确认：配置文件、模型缓存。
+    """
+    import shutil
+
+    from whisper_input.backends.autostart_macos import (
+        AUTOSTART_FILE,
+        AUTOSTART_LABEL,
+    )
+
+    # ── 自动清理部分 ──────────────────────────────────
+
+    if os.path.exists(AUTOSTART_FILE):
+        subprocess.run(
+            ["launchctl", "bootout",
+             f"gui/{os.getuid()}/{AUTOSTART_LABEL}"],
+            capture_output=True,
+        )
+        os.remove(AUTOSTART_FILE)
+        print(f"[uninstall] 已删除 LaunchAgent: {AUTOSTART_FILE}")
+    else:
+        print("[uninstall] LaunchAgent 未安装，跳过")
+
+    # 2. 重置 TCC 授权（按 bundle ID）
+    for service in ("Accessibility", "ListenEvent"):
+        subprocess.run(
+            ["tccutil", "reset", service, BUNDLE_ID],
+            capture_output=True,
+        )
+    print(f"[uninstall] 已重置 TCC 授权: {BUNDLE_ID}")
+
+    # 3. 删除 .app bundle
+    if os.path.isdir(APP_BUNDLE_PATH):
+        shutil.rmtree(APP_BUNDLE_PATH)
+        print(f"[uninstall] 已删除: {APP_BUNDLE_PATH}")
+    else:
+        print("[uninstall] .app bundle 未安装，跳过")
+
+    # 4. 删除 venv-path 配置
+    if os.path.isfile(VENV_PATH_FILE):
+        os.remove(VENV_PATH_FILE)
+
+    # ── 交互确认部分 ──────────────────────────────────
+
+    # 5. 配置文件
+    from whisper_input.config_manager import CONFIG_DIR
+
+    if os.path.isdir(CONFIG_DIR):
+        if _confirm(f"删除配置文件 {CONFIG_DIR} ?"):
+            shutil.rmtree(CONFIG_DIR)
+            print(f"[uninstall] 已删除: {CONFIG_DIR}")
+        else:
+            print("[uninstall] 保留配置文件")
+
+    # 6. 模型缓存
+    cache_base = os.path.expanduser(
+        "~/.cache/modelscope/hub/models/iic"
+    )
+    model_dirs = [
+        os.path.join(cache_base, "SenseVoiceSmall-onnx"),
+        os.path.join(cache_base, "SenseVoiceSmall"),
+    ]
+    existing = [d for d in model_dirs if os.path.isdir(d)]
+    if existing:
+        # 计算总大小
+        total = 0
+        for d in existing:
+            for root, _dirs, files in os.walk(d):
+                total += sum(
+                    os.path.getsize(os.path.join(root, f))
+                    for f in files
+                )
+        size_mb = total / (1024 * 1024)
+        if _confirm(
+            f"删除模型缓存 ({size_mb:.0f} MB) ?"
+        ):
+            for d in existing:
+                shutil.rmtree(d)
+            print("[uninstall] 已删除模型缓存")
+        else:
+            print("[uninstall] 保留模型缓存")
+
+    print()
+    print("清理完成。现在可以运行:")
+    print("  uv tool uninstall whisper-input")

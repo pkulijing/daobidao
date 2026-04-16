@@ -152,6 +152,10 @@ static void run_python(int argc, char *argv[]) {
     }
 
     /* 5. 配置并初始化 Python */
+    /* .app 启动时没有终端 locale，Python 默认 ASCII，遇中文 print 会崩 */
+    setenv("PYTHONIOENCODING", "utf-8", 0);
+    setenv("LC_ALL", "en_US.UTF-8", 0);
+
     wchar_t *whome = py_decode(base_prefix, NULL);
     py_set_home(whome);
 
@@ -196,19 +200,13 @@ int main(int argc, char *argv[]) {
         /* Accessory: 不显示 Dock 图标，但可以有菜单栏/托盘 */
         [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
 
-        /* 在后台线程运行 Python（主线程留给 NSApp 事件循环） */
-        int _argc = argc;
-        char **_argv = argv;
-        dispatch_async(
-            dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0),
-            ^{
-                run_python(_argc, _argv);
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    [NSApp terminate:nil];
-                });
-            });
-
-        [NSApp run];
+        /*
+         * 直接在主线程运行 Python。
+         * pystray 的 icon.run() 会调用 [NSApp run] 启动事件循环。
+         * AppKit 要求 UI 操作（NSStatusBar、NSWindow 等）必须在主线程，
+         * 所以不能把 Python 放后台线程。
+         */
+        run_python(argc, argv);
     }
     return 0;
 }
