@@ -12,10 +12,12 @@ jobs:
   lint-and-test:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
 
       - name: Ruff check
         run: uvx ruff check .
@@ -42,7 +44,7 @@ jobs:
       # 拉 ~231 MB ONNX + ~377 KB BPE 到 ~/.cache/modelscope/hub。缓存这个目录
       # 让后续 CI run 跳过下载,key 用固定 v 标记 —— 想强制刷新就 bump 版本号。
       - name: Cache SenseVoice model
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/modelscope/hub
           key: modelscope-sensevoice-v1
@@ -57,7 +59,7 @@ jobs:
       # 公开仓库 + Trusted Publishing 模式下 codecov-action 不需要 token。
       # 首次上传会自动在 codecov.io 创建项目。
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v6
         with:
           files: ./coverage.xml
           fail_ci_if_error: false  # codecov 服务抖动不应该阻挡 PR 合并

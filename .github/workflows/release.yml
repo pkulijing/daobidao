@@ -19,10 +19,10 @@ jobs:
       id-token: write  # PyPI Trusted Publishing 的 OIDC
       contents: write  # 创建 GitHub Release
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v7
 
       - name: Verify tag matches pyproject version
         run: |
