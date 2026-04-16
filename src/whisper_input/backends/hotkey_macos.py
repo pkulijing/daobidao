@@ -3,8 +3,6 @@
 需要在「系统设置 > 隐私与安全性 > 辅助功能」中授权终端或应用。
 """
 
-import os
-import subprocess
 import threading
 from collections.abc import Callable
 
@@ -14,18 +12,19 @@ from whisper_input.i18n import t
 
 
 def check_macos_permissions() -> bool:
-    """检查 macOS 权限，缺失时分步引导用户设置并重启。
+    """检查 macOS 权限，缺失时触发系统原生弹窗并退出。
 
     需要两个权限：
-    - 辅助功能 (Accessibility)：AXIsProcessTrusted() 检测
-    - 输入监控 (Input Monitoring)：CGPreflightListenEventAccess() 检测
+    - 辅助功能 (Accessibility)：AXIsProcessTrustedWithOptions 触发系统弹窗
+    - 输入监控 (Input Monitoring)：CGRequestListenEventAccess 触发系统弹窗
 
-    返回 True 表示权限已就绪，False 表示用户取消。
+    返回 True 表示权限已就绪；否则 False（调用方应退出程序）。
     """
-    import sys
-
     try:
-        from ApplicationServices import AXIsProcessTrusted
+        from ApplicationServices import (
+            AXIsProcessTrustedWithOptions,
+            kAXTrustedCheckOptionPrompt,
+        )
         from Quartz import (
             CGPreflightListenEventAccess,
             CGRequestListenEventAccess,
@@ -33,91 +32,28 @@ def check_macos_permissions() -> bool:
     except ImportError:
         return True  # pyobjc 未安装，跳过
 
-    accessibility_ok = AXIsProcessTrusted()
+    # AXIsProcessTrustedWithOptions({Prompt: True}) 会在未授权时
+    # 触发 macOS 原生的辅助功能授权对话框。
+    accessibility_ok = AXIsProcessTrustedWithOptions(
+        {kAXTrustedCheckOptionPrompt: True}
+    )
     input_monitoring_ok = CGPreflightListenEventAccess()
-
-    # 主动请求输入监控权限，让系统把应用添加到列表中
     if not input_monitoring_ok:
+        # 触发系统原生的输入监控授权对话框（仅首次调用会弹）
         CGRequestListenEventAccess()
 
     if accessibility_ok and input_monitoring_ok:
         return True
 
-    # 收集缺失的权限（输入监控优先）
     missing = []
-    if not input_monitoring_ok:
-        missing.append((
-            t("perm.input_monitoring"),
-            "x-apple.systempreferences:"
-            "com.apple.preference.security"
-            "?Privacy_ListenEvent",
-        ))
     if not accessibility_ok:
-        missing.append((
-            t("perm.accessibility"),
-            "x-apple.systempreferences:"
-            "com.apple.preference.security"
-            "?Privacy_Accessibility",
-        ))
+        missing.append(t("perm.accessibility"))
+    if not input_monitoring_ok:
+        missing.append(t("perm.input_monitoring"))
 
-    total = len(missing)
-    cancel = t("perm.cancel")
-    open_btn = t("perm.open_settings")
-    for i, (name, settings_url) in enumerate(missing, 1):
-        print(f"[perm] {t('perm.missing', name=name)}")
-
-        title = t("perm.title", step=i, total=total)
-        msg = t("perm.dialog_msg", name=name)
-
-        # 引导弹窗
-        subprocess.run(
-            [
-                "osascript",
-                "-e",
-                f'display dialog "{msg}" '
-                f'buttons {{"{cancel}", "{open_btn}"}} '
-                f'default button 2 '
-                f'with title "{title}" '
-                f"with icon caution",
-            ],
-            capture_output=True,
-        )
-
-        subprocess.run(["open", settings_url])
-
-        # 等待用户操作完毕
-        btn = (
-            t("perm.next_step")
-            if i < total
-            else t("perm.authorized")
-        )
-        continue_msg = t("perm.continue_msg", button=btn)
-        result = subprocess.run(
-            [
-                "osascript",
-                "-e",
-                f'display dialog "{continue_msg}" '
-                f'buttons {{"{cancel}", "{btn}"}} '
-                f'default button 2 '
-                f'with title "{title}" '
-                f"with icon caution",
-            ],
-            capture_output=True,
-        )
-        if result.returncode != 0:
-            return False
-
-    # 重启以应用权限
-    print(f"[perm] {t('perm.restarting')}")
-    from whisper_input.backends.app_bundle_macos import (
-        BUNDLE_ENV_KEY,
-        restart_via_bundle,
-    )
-
-    if os.environ.get(BUNDLE_ENV_KEY):
-        restart_via_bundle()
-    else:
-        os.execv(sys.executable, [sys.executable, *sys.argv])
+    print(f"[perm] {t('perm.need_grant', names='、'.join(missing))}")
+    print(f"[perm] {t('perm.grant_then_restart')}")
+    return False
 
 # 支持的热键映射
 # 注意: pynput 中左侧修饰键不带 _l 后缀（Key.ctrl, Key.alt, Key.cmd）

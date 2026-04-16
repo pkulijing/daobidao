@@ -46,9 +46,12 @@ Supports **Linux (X11)** and **macOS**.
 # Install system dependency
 brew install portaudio
 
-# Install the tool
-uv tool install whisper-input
+# Install the tool (--compile-bytecode skips the first-run .pyc compile step)
+uv tool install --compile-bytecode whisper-input
 # or: pipx install whisper-input
+
+# One-time setup: install .app bundle + download STT model (~231 MB)
+whisper-input --init
 
 # Run
 whisper-input
@@ -59,7 +62,7 @@ whisper-input
 1. **Accessibility** and **Input Monitoring** (for global hotkey listening and text input)
 2. **Microphone** (for voice recording; the system will prompt on first recording)
 
-> **Note**: The PyPI-installed `whisper-input` runs as `~/.local/share/uv/tools/whisper-input/bin/python` (or `~/.local/pipx/venvs/whisper-input/bin/python` for pipx). macOS permission dialogs will show this Python binary, not "Whisper Input.app". Add the corresponding Python path to Accessibility / Input Monitoring.
+> **Note**: On first run (or via `whisper-input --init`), the tool installs a minimal `.app` bundle at `~/Applications/Whisper Input.app`. macOS permission dialogs and System Settings entries will show "Whisper Input" — grant Accessibility / Input Monitoring to that entry. To fully uninstall, run `whisper-input --uninstall` before `uv tool uninstall whisper-input`.
 
 ### Linux
 
@@ -72,9 +75,12 @@ sudo apt install xdotool xclip pulseaudio-utils libportaudio2 \
 # Add yourself to the input group (evdev needs /dev/input/* access)
 sudo usermod -aG input $USER && newgrp input
 
-# Install the tool
-uv tool install whisper-input
+# Install the tool (--compile-bytecode skips the first-run .pyc compile step)
+uv tool install --compile-bytecode whisper-input
 # or: pipx install whisper-input
+
+# One-time setup: download STT model (~231 MB)
+whisper-input --init
 
 # Run
 whisper-input

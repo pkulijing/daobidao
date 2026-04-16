@@ -46,9 +46,12 @@
 # 装系统依赖
 brew install portaudio
 
-# 装工具本体
-uv tool install whisper-input
+# 装工具本体（--compile-bytecode 跳过首次运行时的 .pyc 编译，启动更快）
+uv tool install --compile-bytecode whisper-input
 # 或 pipx install whisper-input
+
+# 一次性初始化：安装 .app bundle + 下载 STT 模型（约 231 MB）
+whisper-input --init
 
 # 运行
 whisper-input
@@ -59,7 +62,7 @@ whisper-input
 1. **辅助功能** 和 **输入监听**（全局热键监听和文字输入）
 2. **麦克风**（语音录制，首次录音时系统会弹出授权对话框）
 
-⚠️ **注意**：PyPI 装出来的 `whisper-input` 实际运行的是 `~/.local/share/uv/tools/whisper-input/bin/python`（pipx 装的路径是 `~/.local/pipx/venvs/whisper-input/bin/python`），macOS 系统权限对话框弹出的是这个 Python 二进制，不是"Whisper Input.app"。请把对应路径的 Python 加入辅助功能 / 输入监听白名单。
+> **注意**：首次运行（或执行 `whisper-input --init`）时，工具会在 `~/Applications/Whisper Input.app` 安装一个极简 `.app` bundle。macOS 系统权限对话框和系统设置里显示的都是 "Whisper Input"，直接给这个条目授权即可。完整卸载请先运行 `whisper-input --uninstall`，再执行 `uv tool uninstall whisper-input`。
 
 ### Linux
 
@@ -72,9 +75,12 @@ sudo apt install xdotool xclip pulseaudio-utils libportaudio2 \
 # 把自己加进 input 组(evdev 读 /dev/input/* 需要)
 sudo usermod -aG input $USER && newgrp input
 
-# 装工具本体
-uv tool install whisper-input
+# 装工具本体（--compile-bytecode 跳过首次运行时的 .pyc 编译，启动更快）
+uv tool install --compile-bytecode whisper-input
 # 或 pipx install whisper-input
+
+# 一次性初始化：下载 STT 模型（约 231 MB）
+whisper-input --init
 
 # 运行
 whisper-input
