@@ -1,4 +1,10 @@
-"""Hatch 自定义构建钩子：将 git commit hash 写入 wheel。"""
+"""Hatch 自定义构建钩子。
+
+功能：
+1. 将 git commit hash 写入 wheel (_commit.txt)
+2. 将 macOS launcher binary + icns 强制包含进 wheel
+   （这些文件在 .gitignore 里，hatch 默认会跳过）
+"""
 
 import subprocess
 from pathlib import Path
@@ -7,14 +13,19 @@ from hatchling.builders.hooks.plugin.interface import BuildHookInterface
 
 
 class CustomBuildHook(BuildHookInterface):
-    """构建时将当前 git commit hash 写入 _commit.txt。"""
+    """构建时注入额外文件到 wheel。"""
 
     PLUGIN_NAME = "custom"
 
     def initialize(self, version, build_data):
         self._written_file: Path | None = None
 
-        # 源码树路径 / sdist 解包路径（sdist 中 force_include 去掉了 src/ 前缀）
+        self._include_commit_hash(build_data)
+        self._include_macos_assets(build_data)
+
+    def _include_commit_hash(self, build_data):
+        """将 git commit hash 写入 _commit.txt。"""
+        # 源码树路径 / sdist 解包路径
         src_path = (
             Path(self.root) / "src" / "whisper_input" / "_commit.txt"
         )
@@ -22,7 +33,6 @@ class CustomBuildHook(BuildHookInterface):
             Path(self.root) / "whisper_input" / "_commit.txt"
         )
 
-        # 从 sdist 构建 wheel 时，文件已存在于 sdist 解包目录
         for existing in (src_path, sdist_path):
             if existing.exists() and existing.read_text(encoding="utf-8").strip():
                 build_data["force_include"][str(existing)] = (
@@ -30,7 +40,6 @@ class CustomBuildHook(BuildHookInterface):
                 )
                 return
 
-        # 首次构建：从 git 获取 commit hash
         commit = self._get_commit()
         if not commit:
             return
@@ -40,6 +49,23 @@ class CustomBuildHook(BuildHookInterface):
             "whisper_input/_commit.txt"
         )
         self._written_file = src_path
+
+    def _include_macos_assets(self, build_data):
+        """将 macOS launcher binary 和 icns 图标强制包含进 wheel。
+
+        这些文件在 .gitignore 里（CI 构建产物），
+        hatch 默认会跳过，需要 force_include。
+        """
+        macos_dir = (
+            Path(self.root) / "src" / "whisper_input"
+            / "assets" / "macos"
+        )
+        for name in ("whisper-input-launcher", "AppIcon.icns"):
+            path = macos_dir / name
+            if path.exists():
+                build_data["force_include"][str(path)] = (
+                    f"whisper_input/assets/macos/{name}"
+                )
 
     def finalize(self, version, build_data, artifact_path):
         if self._written_file and self._written_file.exists():

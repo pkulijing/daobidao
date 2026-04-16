@@ -213,6 +213,15 @@ class _SettingsHandler(BaseHTTPRequestHandler):
         self._send_json({"ok": True})
 
         def do_restart():
+            if sys.platform == "darwin":
+                from whisper_input.backends.app_bundle_macos import (
+                    BUNDLE_ENV_KEY,
+                    restart_via_bundle,
+                )
+
+                if os.environ.get(BUNDLE_ENV_KEY):
+                    restart_via_bundle()
+                    return
             os.execv(sys.executable, [sys.executable, *sys.argv])
 
         # 延迟重启，让响应先返回

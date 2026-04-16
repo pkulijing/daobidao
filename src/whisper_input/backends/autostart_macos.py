@@ -13,9 +13,19 @@ AUTOSTART_FILE = os.path.join(AUTOSTART_DIR, f"{AUTOSTART_LABEL}.plist")
 def _program_arguments() -> list[str]:
     """返回 plist 中 ProgramArguments 使用的命令行。
 
-    优先用 venv / uv tool / pipx 里的 whisper-input console script
-    (sys.prefix/bin/whisper-input),找不到再退回到 `python -m whisper_input`。
+    优先级：
+    1. .app bundle 已安装 → open -g -a（TCC 显示 Whisper Input）
+    2. venv console script → 直接调用
+    3. python -m whisper_input → 兜底
     """
+    from whisper_input.backends.app_bundle_macos import (
+        get_app_bundle_path,
+        is_app_bundle_installed,
+    )
+
+    if is_app_bundle_installed():
+        return ["/usr/bin/open", "-g", "-a", get_app_bundle_path()]
+
     venv_script = os.path.join(sys.prefix, "bin", "whisper-input")
     if os.path.isfile(venv_script):
         return [venv_script]

@@ -1,0 +1,3 @@
+# CI 构建产物，不提交到 git
+whisper-input-launcher
+AppIcon.icns

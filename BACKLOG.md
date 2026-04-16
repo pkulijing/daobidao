@@ -54,30 +54,6 @@ curl -LsSf https://whisper-input.example/install.sh | sh
 
 ---
 
-### macOS 权限问题的优雅解决（探索型）
-
-**问题**：PyPI 路线下，`uv tool install` / `pipx install` 出来的 `whisper-input` 实际进程是 `~/.local/share/uv/tools/whisper-input/bin/python`，macOS 系统授权对话框弹出的是这个 Python 二进制，而不是 "Whisper Input"。
-
-**具体痛点**：
-
-1. 对话框文案是 "python wants to access ..."，非技术用户迷惑（"我没装 python 啊？"）
-2. 图标是默认 Python 图标，没有品牌感
-3. `Info.plist` 里我们写的 `NSMicrophoneUsageDescription` 中文文案不生效（PyPI 装不经过 bundle）
-4. `uv tool upgrade` 如果换了 python 小版本，授权可能失效，用户看不出为什么
-
-**目标状态**：用户装完后首次运行时：
-
-- 授权对话框清楚标识是 "Whisper Input" 在请求权限
-- 对话框文案是我们写的中文描述
-- 图标是我们的 logo
-- 授权一次后，无论是 `uv tool upgrade` 还是重装，都不需要重新授权
-
-**这条刻意不定方案**。可能的方向有很多（thin `.app` wrapper 像 Karabiner 那样、Homebrew Cask 走 cask 路径、Apple Developer ID + 签名公证流程、甚至重新考虑某种形式的轻量 bundle），每条路都有自己的代价和限制。真正做这条时应该先做一轮完整的探索：调研 Karabiner / Rectangle / AltTab 这些工具是怎么解决同一问题的，对比各自的 UX / 开发成本 / 维护成本，再定方向。
-
-**scope**：大。和 14 轮决定的"PyPI only"路线最可能产生张力，启动前应先明确这条能不能兼容 PyPI 路径。可能需要 Apple Developer 账号（$99/年）+ 公证流程。
-
----
-
 ## 识别能力
 
 ### 中英混杂 / 专业词汇的识别后处理
@@ -202,63 +178,6 @@ curl -LsSf https://whisper-input.example/install.sh | sh
 - Linux 用户可能更习惯 `journalctl --user` 查日志，双写（文件 + systemd journal）要不要做
 
 **scope**：中。替换 `print()` + 建 logger 模块 ~半天；改 plist 模板 + 设置页按钮 ~小半天；测试文件轮转 + 各种自启路径下日志都能落盘 ~小半天。
-
----
-
-## 国际化（i18n）
-
-### 软件界面和文档的多语言支持
-
-**动机**：目前整个项目的用户界面文案和文档都是中文硬编码的 —— 设置页（`assets/settings.html`）所有标签、按钮、提示全是中文，README 也是中文为主。作为一个面向开发者的开源工具，缺乏英文界面和文档会挡住非中文用户。法语支持则是为了覆盖更多用户群体。
-
-**目标状态**：
-
-1. **设置页面支持中 / 英 / 法三种语言**：页面右上角有语言切换器，切换后所有 UI 文案即时更新（不刷新页面），用户的语言偏好持久化到配置文件
-2. **README 双语版本**：英文 `README.md`（GitHub 默认展示）+ 中文 `README.zh-CN.md`，文件顶部互相链接切换（GitHub 开源项目标准做法，如 electron / vue / ant-design）
-
-**候选方向**：
-
-#### 设置页 i18n
-
-当前设置页是单个 HTML 文件（`assets/settings.html`，~435 行），由 Python 后端通过 `string.Template` 注入少量动态变量后整体返回，所有 UI 文案硬编码在 HTML 里。
-
-- **方案 A（推荐）—— 前端 JSON 翻译 + JS 运行时切换**：
-  - 翻译文件：`assets/locales/zh.json`、`assets/locales/en.json`、`assets/locales/fr.json`，每个文件是扁平或浅嵌套的 `{ "key": "翻译文本" }` 结构
-  - HTML 中所有待翻译文本标注 `data-i18n="key"` 属性
-  - 一小段 JS（~50 行）：加载对应语言 JSON → 遍历 `[data-i18n]` 元素替换 `textContent` / `placeholder` / `title`
-  - 语言切换即时生效，无需刷新页面，无需后端参与
-  - 用户选择的语言通过现有 REST API 写入 `config.yaml`（加一个 `ui.language` 字段），下次打开设置页自动应用
-  - **这是前端单页应用 i18n 的行业标准做法**（类似 i18next 的核心逻辑，但不需要引入库，手写 50 行够用）
-
-- **方案 B —— 后端 `gettext`**：
-  - Python 标准库 `gettext` + `.po`/`.mo` 文件，服务端渲染不同语言的 HTML
-  - 优点：Python 生态标准方案
-  - 缺点：切换语言要刷新页面；对于这个项目只有一个设置页、且已经是前端渲染风格来说，引入 gettext 编译流程（`msgfmt`）过重
-
-- **方案 C —— 后端多模板**：
-  - 维护 `settings_zh.html` / `settings_en.html` / `settings_fr.html`
-  - 最简单但维护成本最高，三份 HTML 同步修改是噩梦，**不推荐**
-
-#### README 双语
-
-- 英文 `README.md` 作为默认（GitHub 首页展示），中文版 `README.zh-CN.md`
-- 两个文件顶部加语言切换链接：`[English](README.md) | [中文](README.zh-CN.md)`
-- 内容结构保持一致，翻译而非重写
-- 这是 GitHub 上最广泛采用的做法，搜索 "awesome-readme multilingual" 可以看到大量案例
-
-**翻译文本量估算**：
-
-- 设置页：~60-80 个待翻译字符串（标签、按钮、提示、toast 消息、tooltip）
-- README：~300 行 Markdown
-- 总工作量不大，手动翻译质量可控，不需要引入翻译管理平台
-
-**风险**：
-
-- 翻译质量：法语翻译如果靠机器翻译，技术术语可能不地道 —— 最好找法语母语者 review 一次
-- 维护负担：每次改设置页 UI 都要同步更新三个语言文件；每次改 README 都要同步两个版本。需要在 PR 流程里建立"改了 UI 文案就必须更新翻译"的意识
-- 后续扩展语言：方案 A 的架构天然支持加新语言（加一个 JSON 文件 + 切换器里加一个选项），扩展成本很低
-
-**scope**：中。设置页 i18n 框架搭建 + 抽取字符串 + 三语翻译 ~1 天；README 双语版 ~半天；测试语言切换 + 持久化 ~半天。总计 ~2 天。
 
 ---
 

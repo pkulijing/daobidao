@@ -13,7 +13,8 @@ on:
 
 jobs:
   build-and-publish:
-    runs-on: ubuntu-24.04
+    # macOS runner: 编译 launcher + iconutil 生成 icns + 构建 wheel
+    runs-on: macos-latest
     environment: pypi
     permissions:
       id-token: write  # PyPI Trusted Publishing 的 OIDC
@@ -34,6 +35,9 @@ jobs:
             exit 1
           fi
           echo "Tag v$TAG 匹配 pyproject.toml version $VER,继续"
+
+      - name: Build macOS launcher + icon
+        run: bash launcher/macos/build.sh
 
       - name: Build wheel + sdist
         run: uv build

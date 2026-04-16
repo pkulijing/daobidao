@@ -223,7 +223,35 @@ def main():
         action="store_true",
         help=t("cli.no_preload_help"),
     )
+    if sys.platform == "darwin":
+        parser.add_argument(
+            "--install-app",
+            action="store_true",
+            help="安装 macOS .app bundle（解决 TCC 权限显示问题）",
+        )
     args = parser.parse_args()
+
+    # macOS: 处理 --install-app 和 bundle 自动安装/重定向
+    if sys.platform == "darwin":
+        from whisper_input.backends.app_bundle_macos import (
+            BUNDLE_ENV_KEY,
+            install_app_bundle,
+            is_app_bundle_installed,
+            launch_via_bundle,
+            update_venv_path,
+        )
+
+        if getattr(args, "install_app", False):
+            install_app_bundle()
+            return
+
+        if not os.environ.get(BUNDLE_ENV_KEY):
+            if not is_app_bundle_installed():
+                # 首次运行：自动安装 .app bundle
+                install_app_bundle()
+            # 每次都更新 venv 路径（适应 uv tool upgrade）
+            update_venv_path()
+            launch_via_bundle(sys.argv[1:])
 
     # 加载配置
     config_mgr = ConfigManager(args.config)

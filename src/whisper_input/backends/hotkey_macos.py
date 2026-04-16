@@ -109,7 +109,15 @@ def check_macos_permissions() -> bool:
 
     # 重启以应用权限
     print(f"[perm] {t('perm.restarting')}")
-    os.execv(sys.executable, [sys.executable, *sys.argv])
+    from whisper_input.backends.app_bundle_macos import (
+        BUNDLE_ENV_KEY,
+        restart_via_bundle,
+    )
+
+    if os.environ.get(BUNDLE_ENV_KEY):
+        restart_via_bundle()
+    else:
+        os.execv(sys.executable, [sys.executable, *sys.argv])
 
 # 支持的热键映射
 # 注意: pynput 中左侧修饰键不带 _l 后缀（Key.ctrl, Key.alt, Key.cmd）

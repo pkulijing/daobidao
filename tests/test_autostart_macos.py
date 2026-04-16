@@ -22,8 +22,16 @@ def test_xml_escape():
     assert am._xml_escape("plain") == "plain"
 
 
+def _mock_no_bundle(monkeypatch):
+    """让 _program_arguments 跳过 .app bundle 检查。"""
+    import whisper_input.backends.app_bundle_macos as abm
+
+    monkeypatch.setattr(abm, "is_app_bundle_installed", lambda: False)
+
+
 def test_program_arguments_prefers_venv_script(tmp_path, monkeypatch):
     """sys.prefix/bin/whisper-input 存在 → 返回它,不退回 -m。"""
+    _mock_no_bundle(monkeypatch)
     fake_prefix = tmp_path / "venv"
     (fake_prefix / "bin").mkdir(parents=True)
     script = fake_prefix / "bin" / "whisper-input"
@@ -35,6 +43,7 @@ def test_program_arguments_prefers_venv_script(tmp_path, monkeypatch):
 
 def test_program_arguments_falls_back_to_module(tmp_path, monkeypatch):
     """sys.prefix 下没有 console script → 退回 [sys.executable, -m, ...]。"""
+    _mock_no_bundle(monkeypatch)
     monkeypatch.setattr(sys, "prefix", str(tmp_path))  # 没有 bin/
     args = am._program_arguments()
     assert args == [sys.executable, "-m", "whisper_input"]
@@ -42,6 +51,7 @@ def test_program_arguments_falls_back_to_module(tmp_path, monkeypatch):
 
 def test_build_plist_is_valid_and_correct(tmp_path, monkeypatch):
     """_build_plist 输出能被 stdlib plistlib 解析,字段值正确。"""
+    _mock_no_bundle(monkeypatch)
     # 让 _program_arguments 走 fallback 路径,避免依赖 sys.prefix
     monkeypatch.setattr(sys, "prefix", str(tmp_path))
 
