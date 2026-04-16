@@ -40,14 +40,6 @@ else:
     ]
 
 # 支持的语言列表
-SUPPORTED_LANGUAGES = [
-    ("auto", "自动检测"),
-    ("zh", "中文"),
-    ("en", "English"),
-    ("ja", "日本語"),
-    ("ko", "한국어"),
-    ("yue", "粤语"),
-]
 
 # 自启动：委托给平台后端
 if IS_MACOS:
@@ -83,19 +75,6 @@ def _get_settings_html() -> str:
     from whisper_input.config_manager import HOTKEY_CONFIG_KEY
     from whisper_input.version import __commit__, __version__
 
-    # 输入方式：macOS 只有剪贴板，Linux 额外支持 xdotool
-    if IS_MACOS:
-        input_opts = (
-            '<option value="clipboard">剪贴板 (clipboard)</option>'
-        )
-        input_desc = "macOS 使用剪贴板 + Cmd+V 粘贴"
-    else:
-        input_opts = (
-            '<option value="clipboard">剪贴板 (clipboard)</option>\n'
-            '        <option value="xdotool">xdotool</option>'
-        )
-        input_desc = "clipboard 支持中文，xdotool 仅 ASCII"
-
     # commit 链接
     if __commit__:
         short = __commit__[:7]
@@ -111,17 +90,12 @@ def _get_settings_html() -> str:
         hotkey_options=json.dumps(
             SUPPORTED_KEYS, ensure_ascii=False
         ),
-        language_options=json.dumps(
-            SUPPORTED_LANGUAGES, ensure_ascii=False
-        ),
         hotkey_key=HOTKEY_CONFIG_KEY,
         hotkey_default=(
             "KEY_RIGHTMETA" if IS_MACOS else "KEY_RIGHTCTRL"
         ),
         version=__version__,
         commit=commit_html,
-        input_method_options=input_opts,
-        input_method_desc=input_desc,
     )
 
 

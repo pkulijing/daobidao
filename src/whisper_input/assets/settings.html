@@ -197,22 +197,6 @@
       </div>
       <select id="hotkey"></select>
     </div>
-    <div class="setting-row">
-      <div>
-        <div class="setting-label">识别语言</div>
-        <div class="setting-desc">语音识别的目标语言</div>
-      </div>
-      <select id="language"></select>
-    </div>
-    <div class="setting-row">
-      <div>
-        <div class="setting-label">输入方式</div>
-        <div class="setting-desc">$input_method_desc</div>
-      </div>
-      <select id="input_method">
-        $input_method_options
-      </select>
-    </div>
   </div>
 
   <div class="card">
@@ -294,7 +278,6 @@
 
 <script>
 const HOTKEYS = $hotkey_options;
-const LANGUAGES = $language_options;
 const HOTKEY_KEY = '$hotkey_key';
 const HOTKEY_DEFAULT = '$hotkey_default';
 
@@ -328,10 +311,6 @@ async function loadConfig() {
     const autostart = await autoRes.json();
 
     populateSelect('hotkey', HOTKEYS, config[HOTKEY_KEY] || HOTKEY_DEFAULT);
-    populateSelect('language', LANGUAGES,
-      (config.sensevoice && config.sensevoice.language) || 'auto');
-    document.getElementById('input_method').value =
-      config.input_method || 'clipboard';
     document.getElementById('sound_enabled').checked =
       config.sound ? config.sound.enabled !== false : true;
     document.getElementById('overlay_enabled').checked =
@@ -426,12 +405,6 @@ async function restartApp() {
 function bindAutoSave() {
   document.getElementById('hotkey').addEventListener('change', function() {
     saveSetting(HOTKEY_KEY, this.value);
-  });
-  document.getElementById('language').addEventListener('change', function() {
-    saveSetting('sensevoice.language', this.value);
-  });
-  document.getElementById('input_method').addEventListener('change', function() {
-    saveSetting('input_method', this.value);
   });
   document.getElementById('sound_enabled').addEventListener('change', function() {
     saveSetting('sound.enabled', this.checked);

@@ -32,7 +32,7 @@ def stt() -> SenseVoiceSTT:
     """模块级 fixture: 整个 test_sense_voice.py 共享一个加载好的模型实例,
     避免每个用例都付一次 ONNX session 创建的成本。
     """
-    instance = SenseVoiceSTT(language="zh", use_itn=True)
+    instance = SenseVoiceSTT(use_itn=True)
     instance.load()
     return instance
 

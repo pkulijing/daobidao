@@ -81,7 +81,6 @@ class WhisperInput:
             channels=config.get("audio", {}).get("channels", 1),
         )
         self.stt = create_stt_engine(config)
-        self.input_method = config.get("input_method", "clipboard")
         self.sound_enabled = config.get("sound", {}).get("enabled", True)
         from whisper_input.config_manager import _SOUND_SUFFIX
 
@@ -158,7 +157,7 @@ class WhisperInput:
             text = self.stt.transcribe(wav_data)
             if text:
                 print(f"[main] 识别结果: {text}")
-                type_text(text, method=self.input_method)
+                type_text(text)
             else:
                 print("[main] 未识别到文字")
         except Exception as e:
@@ -172,12 +171,6 @@ class WhisperInput:
         if "sound.enabled" in changes:
             self.sound_enabled = changes["sound.enabled"]
             print(f"[main] 提示音已{'开启' if self.sound_enabled else '关闭'}")
-        if "input_method" in changes:
-            self.input_method = changes["input_method"]
-            print(f"[main] 输入方式已切换为: {self.input_method}")
-        if "sensevoice.language" in changes:
-            self.stt.language = changes["sensevoice.language"]
-            print(f"[main] 识别语言已切换为: {self.stt.language}")
         if "overlay.enabled" in changes:
             self.overlay_enabled = changes["overlay.enabled"]
             print(
@@ -228,7 +221,6 @@ def main():
     print("=" * 50)
     print(f"  引擎: {engine}")
     print(f"  热键: {hotkey} (按住说话，松开输入)")
-    print(f"  输入: {config.get('input_method', 'clipboard')}")
     print("=" * 50)
 
     # macOS: 启动前检查辅助功能和输入监控权限

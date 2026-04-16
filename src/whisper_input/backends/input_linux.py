@@ -1,24 +1,16 @@
-"""文字输入模块 (Linux) - 通过 xclip + xdotool 输入到当前焦点窗口。"""
+"""文字输入模块 (Linux) - 通过 xclip + xdotool 粘贴输入到当前焦点窗口。"""
 
 import contextlib
 import subprocess
 import time
 
 
-def type_text(text: str, method: str = "clipboard") -> None:
-    """将文字输入到当前焦点窗口。
-
-    Args:
-        text: 要输入的文字
-        method: "clipboard" (推荐，支持中文) 或 "xdotool" (仅ASCII)
-    """
+def type_text(text: str) -> None:
+    """将文字输入到当前焦点窗口（剪贴板 + Shift+Insert 粘贴）。"""
     if not text:
         return
 
-    if method == "clipboard":
-        _type_via_clipboard(text)
-    else:
-        _type_via_xdotool(text)
+    _type_via_clipboard(text)
 
 
 def _type_via_clipboard(text: str) -> None:
@@ -90,11 +82,3 @@ def _type_via_clipboard(text: str) -> None:
                 input=original,
                 timeout=2,
             )
-
-
-def _type_via_xdotool(text: str) -> None:
-    """通过 xdotool 直接输入（仅支持 ASCII）。"""
-    subprocess.run(
-        ["xdotool", "type", "--clearmodifiers", "--", text],
-        timeout=5,
-    )

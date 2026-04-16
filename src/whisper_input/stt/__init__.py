@@ -23,7 +23,6 @@ def create_stt(engine: str, config: dict) -> BaseSTT:
         from whisper_input.stt.sense_voice import SenseVoiceSTT
 
         return SenseVoiceSTT(
-            language=config.get("language", "auto"),
             use_itn=config.get("use_itn", True),
         )
     raise ValueError(f"未知的 STT 引擎: {engine}")

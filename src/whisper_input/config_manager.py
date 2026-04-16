@@ -31,10 +31,8 @@ DEFAULT_CONFIG = {
         "channels": 1,
     },
     "sensevoice": {
-        "language": "auto",
         "use_itn": True,
     },
-    "input_method": "clipboard",
     "sound": {
         "enabled": True,
         "start_linux": "/usr/share/sounds/freedesktop/stereo/message.oga",
@@ -238,26 +236,10 @@ class ConfigManager:
         )
         lines.append("sensevoice:")
         sv = config.get("sensevoice", {})
-        lines.append(
-            f"  language: {sv.get('language', 'auto')}"
-            "  # auto, zh, en, ja, ko, yue"
-        )
         use_itn = "true" if sv.get("use_itn", True) else "false"
         lines.append(
             f"  use_itn: {use_itn}  # 反向文本规范化(数字、日期等)"
         )
-        lines.append("")
-
-        if IS_MACOS:
-            lines.append(
-                '# 输入方式: "clipboard" (剪贴板 + Cmd+V)'
-            )
-        else:
-            lines.append(
-                '# 输入方式: "clipboard" (推荐,支持中文)'
-                ' 或 "xdotool" (仅ASCII)'
-            )
-        lines.append(f"input_method: {config.get('input_method', 'clipboard')}")
         lines.append("")
 
         lines.append("# 提示音（按平台分别设置路径）")

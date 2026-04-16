@@ -11,13 +11,8 @@ from pynput.keyboard import Controller, Key
 _keyboard = Controller()
 
 
-def type_text(text: str, method: str = "clipboard") -> None:
-    """将文字输入到当前焦点窗口。
-
-    Args:
-        text: 要输入的文字
-        method: macOS 上忽略此参数，始终使用剪贴板方式
-    """
+def type_text(text: str) -> None:
+    """将文字输入到当前焦点窗口（剪贴板 + Cmd+V 粘贴）。"""
     if not text:
         return
     _type_via_clipboard(text)

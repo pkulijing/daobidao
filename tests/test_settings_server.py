@@ -84,12 +84,9 @@ def test_get_settings_html_substitutes_placeholders():
     assert "<title>Whisper Input 设置</title>" in html
     # 占位符全部被替换
     assert "HOTKEY_OPTIONS_PLACEHOLDER" not in html
-    assert "LANGUAGE_OPTIONS_PLACEHOLDER" not in html
-    assert "INPUT_METHOD_OPTIONS_PLACEHOLDER" not in html
     assert "HOTKEY_KEY_PLACEHOLDER" not in html
     # JS 数据数组被注入
     assert "const HOTKEYS = [" in html
-    assert "const LANGUAGES = [" in html
 
 
 # --- HTTP endpoint smoke tests ---
@@ -118,14 +115,14 @@ def test_post_api_config_persists(running_server):
         host,
         port,
         "/api/config",
-        body={"sensevoice.language": "ko"},
+        body={"sensevoice.use_itn": False},
     )
     assert status == 200
     # 内存里更新
-    assert mgr.get("sensevoice.language") == "ko"
+    assert mgr.get("sensevoice.use_itn") is False
     # 磁盘里也持久化了:reload 一遍
     mgr.load()
-    assert mgr.get("sensevoice.language") == "ko"
+    assert mgr.get("sensevoice.use_itn") is False
 
 
 def test_post_api_config_invalid_json(running_server):
@@ -150,7 +147,7 @@ def test_post_api_config_reset(running_server):
         host,
         port,
         "/api/config",
-        body={"sensevoice.language": "ja"},
+        body={"sensevoice.use_itn": False},
     )
     # reset
     status, _ = _request(
@@ -160,8 +157,8 @@ def test_post_api_config_reset(running_server):
     # 重新 load,值回到默认
     mgr.load()
     assert (
-        mgr.get("sensevoice.language")
-        == DEFAULT_CONFIG["sensevoice"]["language"]
+        mgr.get("sensevoice.use_itn")
+        == DEFAULT_CONFIG["sensevoice"]["use_itn"]
     )
 
 

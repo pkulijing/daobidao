@@ -49,11 +49,9 @@ class SenseVoiceSTT(BaseSTT):
 
     def __init__(
         self,
-        language: str = "auto",
         use_itn: bool = True,
         num_threads: int = 4,
     ):
-        self.language = language
         self.use_itn = use_itn
         self.num_threads = num_threads
         self._session = None
@@ -148,7 +146,7 @@ class SenseVoiceSTT(BaseSTT):
         x = feat[np.newaxis, :, :].astype(np.float32)
         xl = np.array([feat.shape[0]], dtype=np.int32)
         lang = np.array(
-            [_LANG_ID.get(self.language, _LANG_ID["auto"])],
+            [_LANG_ID["auto"]],
             dtype=np.int32,
         )
         tn = np.array(

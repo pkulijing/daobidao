@@ -73,20 +73,6 @@ def test_macos_clipboard_paste_sequence(monkeypatch):
     ]
 
 
-def test_macos_method_arg_ignored(monkeypatch):
-    """macOS 的 type_text 忽略 method 参数,始终走剪贴板路径。"""
-    rec = _RunRecorder()
-    monkeypatch.setattr(im.subprocess, "run", rec)
-    monkeypatch.setattr(im.time, "sleep", lambda _: None)
-    im._keyboard.calls.clear()
-
-    im.type_text("x", method="xdotool")  # 该参数被忽略
-    cmds = [c[0][0] for c in rec.calls]
-    # 仍然是 pbpaste / pbcopy,不会出现 xdotool
-    assert "xdotool" not in cmds
-    assert "pbcopy" in cmds
-
-
 # --- Linux ---
 
 
@@ -104,7 +90,7 @@ def test_linux_clipboard_writes_both_selections_and_pastes(
     monkeypatch.setattr(il.subprocess, "run", rec)
     monkeypatch.setattr(il.time, "sleep", lambda _: None)
 
-    il.type_text("中文测试", method="clipboard")
+    il.type_text("中文测试")
 
     cmds = [c[0] for c in rec.calls]
     # 必须同时写 clipboard 和 primary 两个 selection
@@ -116,7 +102,7 @@ def test_linux_clipboard_writes_both_selections_and_pastes(
         c[:3] == ["xclip", "-selection", "primary"]
         for c in cmds
     )
-    # 必须用 xdotool key shift+Insert 触发粘贴(不是 ctrl+v)
+    # 必须用 xdotool key shift+Insert 触发粘贴
     assert any(
         c == [
             "xdotool",
@@ -137,14 +123,3 @@ def test_linux_clipboard_writes_both_selections_and_pastes(
     )
 
 
-def test_linux_xdotool_method_uses_xdotool_type(monkeypatch):
-    rec = _RunRecorder()
-    monkeypatch.setattr(il.subprocess, "run", rec)
-
-    il.type_text("ascii", method="xdotool")
-
-    cmds = [c[0] for c in rec.calls]
-    # 只调用一次 xdotool type,绝不调用 xclip
-    assert cmds == [
-        ["xdotool", "type", "--clearmodifiers", "--", "ascii"]
-    ]

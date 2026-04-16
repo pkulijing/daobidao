@@ -21,11 +21,7 @@ audio:
 # SenseVoice-Small ONNX(~231 MB),缓存在 ~/.cache/modelscope/hub/,
 # 国内 CDN 秒级下完,无需代理。一次成功后永久离线。
 sensevoice:
-  language: auto  # auto, zh, en, ja, ko, yue
   use_itn: true   # 反向文本规范化(数字、日期等)
-
-# 输入方式: "clipboard" (剪贴板 + Cmd+V)
-input_method: clipboard
 
 # 提示音（按平台分别设置路径）
 sound:

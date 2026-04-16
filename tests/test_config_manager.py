@@ -66,17 +66,13 @@ def test_load_existing_file_merges_with_defaults(tmp_path):
     cfg_path.write_text(
         "engine: sensevoice\n"
         "sensevoice:\n"
-        "  language: en\n",
+        "  use_itn: false\n",
         encoding="utf-8",
     )
     mgr = ConfigManager(config_path=str(cfg_path))
     # 文件里覆盖的 key
-    assert mgr.config["sensevoice"]["language"] == "en"
+    assert mgr.config["sensevoice"]["use_itn"] is False
     # 文件里没写的 key 走默认
-    assert (
-        mgr.config["sensevoice"]["use_itn"]
-        == DEFAULT_CONFIG["sensevoice"]["use_itn"]
-    )
     assert mgr.config["audio"] == DEFAULT_CONFIG["audio"]
 
 
@@ -85,7 +81,7 @@ def test_load_existing_file_merges_with_defaults(tmp_path):
 
 def test_get_with_dot_path(tmp_path):
     mgr = ConfigManager(config_path=str(tmp_path / "config.yaml"))
-    assert mgr.get("sensevoice.language") == "auto"
+    assert mgr.get("sensevoice.use_itn") is True
     assert mgr.get("audio.sample_rate") == 16000
 
 
@@ -97,8 +93,8 @@ def test_get_missing_key_returns_default(tmp_path):
 
 def test_set_with_dot_path(tmp_path):
     mgr = ConfigManager(config_path=str(tmp_path / "config.yaml"))
-    mgr.set("sensevoice.language", "ja")
-    assert mgr.get("sensevoice.language") == "ja"
+    mgr.set("sensevoice.use_itn", False)
+    assert mgr.get("sensevoice.use_itn") is False
 
 
 def test_set_creates_intermediate_dicts(tmp_path):
@@ -113,13 +109,13 @@ def test_set_creates_intermediate_dicts(tmp_path):
 def test_save_then_reload_preserves_changes(tmp_path):
     cfg_path = tmp_path / "config.yaml"
     mgr = ConfigManager(config_path=str(cfg_path))
-    mgr.set("sensevoice.language", "ko")
+    mgr.set("sensevoice.use_itn", False)
     mgr.set("settings_port", 51999)
     mgr.save()
 
     # 用新实例从磁盘读回,验证持久化
     mgr2 = ConfigManager(config_path=str(cfg_path))
-    assert mgr2.get("sensevoice.language") == "ko"
+    assert mgr2.get("sensevoice.use_itn") is False
     assert mgr2.get("settings_port") == 51999
 
 
