@@ -55,6 +55,7 @@ dependencies = [
     # filelock / packaging / requests / tqdm / urllib3 这几个轻量依赖(~36 MB),
     # torch / transformers / scipy 等推理栈全在 extras 里,不装 extras 就不会拉。
     "modelscope>=1.35.4",
+    "structlog>=24.0",
 ]
 
 [project.scripts]

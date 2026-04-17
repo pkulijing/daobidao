@@ -11,6 +11,9 @@ from collections.abc import Callable
 from pynput.keyboard import Key, Listener
 
 from whisper_input.i18n import t
+from whisper_input.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 def check_macos_permissions() -> bool:
@@ -43,18 +46,24 @@ def check_macos_permissions() -> bool:
     if AXIsProcessTrusted():
         return True
 
-    print(
-        f"[perm] "
-        f"{t('perm.need_grant', names=t('perm.accessibility'))}"
+    logger.warning(
+        "perm_need_grant",
+        names=t("perm.accessibility"),
+        message=t("perm.need_grant", names=t("perm.accessibility")),
     )
     AXIsProcessTrustedWithOptions(
         {kAXTrustedCheckOptionPrompt: True}
     )
-    print(f"[perm] {t('perm.waiting_for_grant')}")
+    logger.info(
+        "perm_waiting_for_grant", message=t("perm.waiting_for_grant")
+    )
     while not AXIsProcessTrusted():
         CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.5, False)
 
-    print(f"[perm] {t('perm.granted_restarting')}")
+    logger.info(
+        "perm_granted_restarting",
+        message=t("perm.granted_restarting"),
+    )
     from whisper_input.backends.app_bundle_macos import (
         BUNDLE_ENV_KEY,
         restart_via_bundle,
@@ -140,9 +149,10 @@ class HotkeyListener:
         if self._listener is not None:
             return
 
-        print(
-            f"[hotkey] "
-            f"{t('hotkey.listening', hotkey=self.hotkey_name)}"
+        logger.info(
+            "hotkey_listening",
+            hotkey=self.hotkey_name,
+            message=t("hotkey.listening", hotkey=self.hotkey_name),
         )
 
         try:
@@ -151,13 +161,12 @@ class HotkeyListener:
                 on_release=self._on_key_release,
             )
             self._listener.start()
-        except Exception as e:
-            print(
-                f"[hotkey] "
-                f"{t('hotkey.listen_fail', error=e)}"
+        except Exception:
+            logger.exception(
+                "hotkey_listen_failed",
+                hint=t("hotkey.accessibility_hint"),
+                action=t("hotkey.grant_access"),
             )
-            print(f"[hotkey] {t('hotkey.accessibility_hint')}")
-            print(f"  {t('hotkey.grant_access')}")
 
     def stop(self) -> None:
         """停止监听。"""

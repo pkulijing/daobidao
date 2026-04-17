@@ -14,6 +14,10 @@ import stat
 import subprocess
 import sys
 
+from whisper_input.logger import get_logger
+
+logger = get_logger(__name__)
+
 # .app bundle 安装位置
 APP_NAME = "Whisper Input"
 APP_BUNDLE_NAME = f"{APP_NAME}.app"
@@ -124,7 +128,7 @@ def install_app_bundle() -> str:
     """
     from whisper_input.i18n import t
 
-    print(f"[install-app] {t('install.start')}")
+    logger.info("install_start", message=t("install.start"))
 
     # 1. 获取预编译资源
     launcher_ref, icns_ref = _get_prebuilt_assets()
@@ -139,7 +143,7 @@ def install_app_bundle() -> str:
 
     # 3. 复制预编译 launcher
     exe_path = os.path.join(macos_dir, "whisper-input")
-    print(f"[install-app] {t('install.launcher')}")
+    logger.info("install_launcher", message=t("install.launcher"))
     with open(exe_path, "wb") as out:
         out.write(launcher_ref.read_bytes())
     os.chmod(exe_path, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP
@@ -151,13 +155,13 @@ def install_app_bundle() -> str:
         f.write(_build_info_plist())
 
     # 5. 复制预生成图标
-    print(f"[install-app] {t('install.icon')}")
+    logger.info("install_icon", message=t("install.icon"))
     icns_path = os.path.join(resources_dir, "AppIcon.icns")
     with open(icns_path, "wb") as out:
         out.write(icns_ref.read_bytes())
 
     # 6. Ad-hoc 签名
-    print(f"[install-app] {t('install.sign')}")
+    logger.info("install_sign", message=t("install.sign"))
     subprocess.run(
         ["codesign", "--force", "--sign", "-", "--deep",
          APP_BUNDLE_PATH],
@@ -167,8 +171,10 @@ def install_app_bundle() -> str:
     # 7. 保存 venv 路径
     _save_venv_path()
 
-    print(
-        f"[install-app] {t('install.done', path=APP_BUNDLE_PATH)}"
+    logger.info(
+        "install_done",
+        path=APP_BUNDLE_PATH,
+        message=t("install.done", path=APP_BUNDLE_PATH),
     )
     return APP_BUNDLE_PATH
 

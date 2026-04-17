@@ -5,6 +5,8 @@ import os
 import subprocess
 import sys
 
+from whisper_input.logger import LAUNCHD_LOG_FILENAME, get_log_dir
+
 AUTOSTART_DIR = os.path.expanduser("~/Library/LaunchAgents")
 AUTOSTART_LABEL = "com.whisper-input"
 AUTOSTART_FILE = os.path.join(AUTOSTART_DIR, f"{AUTOSTART_LABEL}.plist")
@@ -50,6 +52,11 @@ def _build_plist() -> str:
         f"        <string>{_xml_escape(a)}</string>"
         for a in _program_arguments()
     )
+    # launchd 自己写的 stderr/stdout 用独立文件,不经 Python 的
+    # RotatingFileHandler 轮转 —— 避免 launchd 持有旧 fd 把 stderr 写进已被
+    # 重命名的孤儿文件,直到进程重启才切回来。app 内的结构化日志走 logger
+    # 自己的 whisper-input.log(可轮转)。
+    launchd_log = _xml_escape(str(get_log_dir() / LAUNCHD_LOG_FILENAME))
     return f"""\
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" \
@@ -68,6 +75,10 @@ def _build_plist() -> str:
     <false/>
     <key>ProcessType</key>
     <string>Interactive</string>
+    <key>StandardOutPath</key>
+    <string>{launchd_log}</string>
+    <key>StandardErrorPath</key>
+    <string>{launchd_log}</string>
 </dict>
 </plist>
 """
@@ -98,6 +109,9 @@ def set_autostart(enabled: bool) -> None:
     """
     if enabled:
         os.makedirs(AUTOSTART_DIR, exist_ok=True)
+        # launchd 不会自己建日志目录,plist 里引用的 StandardErrorPath
+        # 的父目录必须存在
+        get_log_dir().mkdir(parents=True, exist_ok=True)
         with open(AUTOSTART_FILE, "w", encoding="utf-8") as f:
             f.write(_build_plist())
     else:

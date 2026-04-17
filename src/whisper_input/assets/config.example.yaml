@@ -33,3 +33,8 @@ sound:
 
 # 设置页面端口
 settings_port: 51230
+
+# 日志级别：DEBUG / INFO / WARNING / ERROR
+# 日志目录：macOS ~/Library/Logs/Whisper Input/、
+#          Linux $XDG_STATE_HOME/whisper-input/（兜底 ~/.local/state/whisper-input/）
+log_level: INFO

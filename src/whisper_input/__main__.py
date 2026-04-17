@@ -43,7 +43,10 @@ from whisper_input.config_manager import ConfigManager
 from whisper_input.hotkey import HotkeyListener
 from whisper_input.i18n import load_locales, set_language, t
 from whisper_input.input_method import type_text
+from whisper_input.logger import configure_logging, get_logger
 from whisper_input.recorder import AudioRecorder
+
+logger = get_logger(__name__)
 
 
 def create_stt_engine(config: dict):
@@ -122,7 +125,7 @@ class WhisperInput:
         """热键按下 - 开始录音。"""
         if self._processing:
             return
-        print(f"[main] {t('main.recording_start')}")
+        logger.info("recording_start", message=t("main.recording_start"))
         self._notify_status("recording")
         # 连接音量回调到浮窗
         if self._overlay and self.overlay_enabled:
@@ -135,7 +138,7 @@ class WhisperInput:
         """热键释放 - 停止录音并识别。"""
         if not self.recorder.is_recording:
             return
-        print(f"[main] {t('main.recording_stop')}")
+        logger.info("recording_stop", message=t("main.recording_stop"))
         self.recorder.on_level = None
         self._notify_status("processing")
         if self.sound_enabled:
@@ -143,7 +146,7 @@ class WhisperInput:
 
         wav_data = self.recorder.stop()
         if not wav_data:
-            print(f"[main] {t('main.no_audio')}")
+            logger.warning("no_audio", message=t("main.no_audio"))
             return
 
         # 在后台线程中处理识别，避免阻塞热键监听
@@ -157,12 +160,20 @@ class WhisperInput:
         try:
             text = self.stt.transcribe(wav_data)
             if text:
-                print(f"[main] {t('main.result', text=text)}")
+                logger.info(
+                    "transcription_complete",
+                    message=t("main.result", text=text),
+                    text_length=len(text),
+                )
                 type_text(text)
             else:
-                print(f"[main] {t('main.no_text')}")
-        except Exception as e:
-            print(f"[main] {t('main.recognize_fail', error=e)}")
+                logger.warning(
+                    "no_text_recognized", message=t("main.no_text")
+                )
+        except Exception:
+            logger.exception(
+                "recognize_failed", message=t("main.recognize_fail", error="")
+            )
         finally:
             self._processing = False
             self._notify_status("ready")
@@ -172,7 +183,12 @@ class WhisperInput:
         if "sound.enabled" in changes:
             self.sound_enabled = changes["sound.enabled"]
             key = "main.sound_on" if self.sound_enabled else "main.sound_off"
-            print(f"[main] {t(key)}")
+            logger.info(
+                "config_toggle",
+                setting="sound",
+                enabled=self.sound_enabled,
+                message=t(key),
+            )
         if "overlay.enabled" in changes:
             self.overlay_enabled = changes["overlay.enabled"]
             key = (
@@ -180,7 +196,12 @@ class WhisperInput:
                 if self.overlay_enabled
                 else "main.overlay_off"
             )
-            print(f"[main] {t(key)}")
+            logger.info(
+                "config_toggle",
+                setting="overlay",
+                enabled=self.overlay_enabled,
+                message=t(key),
+            )
         if "tray_status.enabled" in changes:
             self.tray_status_enabled = changes["tray_status.enabled"]
             key = (
@@ -188,13 +209,18 @@ class WhisperInput:
                 if self.tray_status_enabled
                 else "main.tray_off"
             )
-            print(f"[main] {t(key)}")
+            logger.info(
+                "config_toggle",
+                setting="tray_status",
+                enabled=self.tray_status_enabled,
+                message=t(key),
+            )
         if "ui.language" in changes:
             set_language(changes["ui.language"])
 
     def preload_model(self) -> None:
         """预加载模型(让首次按热键时不要卡在加载)。"""
-        print(f"[main] {t('main.preload')}")
+        logger.info("model_preload_start", message=t("main.preload"))
         self.stt.load()
         self._notify_status("ready")
 
@@ -202,6 +228,10 @@ class WhisperInput:
 def main():
     # 先加载 i18n（argparse 之前需要用到翻译）
     load_locales()
+
+    # logger 尽早初始化:配置文件还没加载,先用默认 INFO。
+    # 配置读入后会再次调用 configure_logging(config["log_level"]) 生效(幂等)。
+    configure_logging("INFO")
 
     # 先用默认配置解析命令行（获取 -c 指定的配置文件路径）
     parser = argparse.ArgumentParser(
@@ -238,7 +268,7 @@ def main():
 
     # --init: 一次性完成安装后初始化
     if args.init:
-        print(f"[init] {t('init.start')}")
+        logger.info("init_start", message=t("init.start"))
 
         # macOS: 安装 .app bundle
         if sys.platform == "darwin":
@@ -249,14 +279,15 @@ def main():
             install_app_bundle()
 
         # 下载 STT 模型
-        print(f"[init] {t('init.download_model')}")
+        logger.info(
+            "init_download_model", message=t("init.download_model")
+        )
         config_mgr = ConfigManager(args.config)
         stt = create_stt_engine(config_mgr.config)
         stt.load()
-        print(f"[init] {t('init.model_ready')}")
+        logger.info("init_model_ready", message=t("init.model_ready"))
 
-        print()
-        print(t("init.done"))
+        logger.info("init_done", message=t("init.done"))
         return
 
     # macOS: 处理 --install-app 和 bundle 自动安装/重定向
@@ -293,6 +324,9 @@ def main():
     config_mgr = ConfigManager(args.config)
     config = config_mgr.config
 
+    # 用户配置的 log_level 覆盖早期默认(idempotent re-configure)
+    configure_logging(config.get("log_level", "INFO"))
+
     # 从配置更新语言（覆盖默认值）
     set_language(config.get("ui", {}).get("language", "zh"))
 
@@ -305,12 +339,12 @@ def main():
     hotkey = config.get(HOTKEY_CONFIG_KEY, "KEY_RIGHTCTRL")
     engine = config.get("engine", "sensevoice")
 
-    print("=" * 50)
-    print(f"  {t('main.banner')}")
-    print("=" * 50)
-    print(f"  {t('main.engine', engine=engine)}")
-    print(f"  {t('main.hotkey', hotkey=hotkey)}")
-    print("=" * 50)
+    logger.info(
+        "startup_banner",
+        engine=engine,
+        hotkey=hotkey,
+        message=t("main.banner"),
+    )
 
     # macOS: 启动前检查辅助功能权限
     # check_macos_permissions() 要么返回 True，要么阻塞等待授权然后重启
@@ -338,7 +372,9 @@ def main():
 
         wi.set_overlay(RecordingOverlay())
     except ImportError:
-        print(f"[main] {t('main.overlay_unavail')}")
+        logger.warning(
+            "overlay_unavailable", message=t("main.overlay_unavail")
+        )
 
     # 预加载模型
     if not args.no_preload:
@@ -364,7 +400,7 @@ def main():
         if _shutting_down:
             return
         _shutting_down = True
-        print(f"\n[main] {t('main.shutting_down')}")
+        logger.info("shutting_down", message=t("main.shutting_down"))
         with contextlib.suppress(Exception):
             settings_server.stop()
         with contextlib.suppress(Exception):
@@ -379,8 +415,11 @@ def main():
 
     listener.start()
 
-    print(f"[main] {t('main.ready')}")
-    print(f"[main] {t('main.exit_hint')}")
+    logger.info(
+        "ready",
+        message=t("main.ready"),
+        exit_hint=t("main.exit_hint"),
+    )
 
     # 启动系统托盘
     run_tray = None
@@ -388,7 +427,9 @@ def main():
         try:
             from whisper_input.tray import run_tray
         except ImportError:
-            print(f"[main] {t('main.no_tray')}")
+            logger.warning(
+                "tray_unavailable", message=t("main.no_tray")
+            )
 
     if run_tray is not None:
         tray_icon = run_tray(wi, settings_server, on_quit=shutdown)

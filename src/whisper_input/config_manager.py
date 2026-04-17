@@ -50,6 +50,7 @@ DEFAULT_CONFIG = {
     "ui": {
         "language": "zh",
     },
+    "log_level": "INFO",
 }
 
 # 当前平台使用的 sound 配置键后缀

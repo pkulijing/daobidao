@@ -146,41 +146,6 @@ curl -LsSf https://whisper-input.example/install.sh | sh
 
 ---
 
-### 日志系统（目前完全没有）
-
-**动机**：程序到现在为止根本没有日志 —— 代码里一行 `logging` 都没用，所有输出都是 `print()` 直接打到 stdout/stderr。手动从终端跑的时候消息还能看见，但是：
-
-- **macOS 自启（LaunchAgent）**：[autostart_macos.py:33-58](src/whisper_input/backends/autostart_macos.py#L33-L58) 生成的 plist 没有 `StandardOutPath` / `StandardErrorPath`，launchd 默认把两个流都丢到 `/dev/null`。**自启模式下日志直接消失，出问题没法追**
-- **Linux 自启（XDG .desktop）**：[whisper-input.desktop](src/whisper_input/assets/whisper-input.desktop) 的 `Exec=whisper-input` 也没重定向，输出去向取决于桌面环境（GNOME 进 `journalctl --user`，其它 DE 行为各异，也可能直接丢了）
-
-对一个长期跑在后台的工具来说这是个明显的洞 —— 用户来报 bug 时我们唯一能让他做的是"请从终端手动跑一次再复现"，完全没有"查一下过去 24h 的日志"这个选项。
-
-**目标状态**：
-
-- 全局 `logging` 配置，替换掉现在所有的 `print()` 调用，按 level 分流（INFO 正常输出、DEBUG 开发态才有、WARNING/ERROR 始终记录）
-- 日志文件写到平台约定目录：
-  - macOS: `~/Library/Logs/whisper-input/whisper-input.log`（Apple 推荐位置，Console.app 会自动扫这里）
-  - Linux: `$XDG_STATE_HOME/whisper-input/whisper-input.log`，兜底 `~/.local/state/whisper-input/whisper-input.log`（XDG 规范下 state 目录就是放日志的地方）
-- `RotatingFileHandler`：单文件 1 MB，保留 3 轮，避免长期运行撑爆磁盘
-- **LaunchAgent plist 把 `StandardErrorPath` 也指向同一个文件**，这样 launchd 自己 spawn 失败 / Python 崩溃前 traceback 也能被捕获（logging 配置还没起来的阶段）
-- 设置页加一个"打开日志目录"按钮，点了直接 `open`（macOS）/ `xdg-open`（Linux）弹文件管理器
-
-**候选方向**：
-
-- **stdlib `logging` + `RotatingFileHandler`**：零新依赖，完全够用，首选
-- **`loguru`**：API 更友好，彩色输出开箱即用，但引入一个新依赖，且项目规模小没必要
-- **`structlog`**：结构化日志对后续做可观测性有帮助，但现在没到那个阶段
-
-**风险**：
-
-- 替换所有 `print()` 是 cross-cutting 改动，要一次做完避免两套并存
-- LaunchAgent 的 `StandardErrorPath` 路径在 plist 生成时是写死的，用户如果改了 `$HOME` 或者自定义了日志位置会错位 —— 得想清楚 config 和 plist 的同步策略
-- Linux 用户可能更习惯 `journalctl --user` 查日志，双写（文件 + systemd journal）要不要做
-
-**scope**：中。替换 `print()` + 建 logger 模块 ~半天；改 plist 模板 + 设置页按钮 ~小半天；测试文件轮转 + 各种自启路径下日志都能落盘 ~小半天。
-
----
-
 ## 代码质量
 
 ### 测试套增强（v2）

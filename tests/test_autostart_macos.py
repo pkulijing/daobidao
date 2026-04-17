@@ -49,9 +49,17 @@ def test_program_arguments_falls_back_to_module(tmp_path, monkeypatch):
     assert args == [sys.executable, "-m", "whisper_input"]
 
 
+def _mock_log_dir(monkeypatch, tmp_path):
+    """让 get_log_dir() 指向 tmp 目录,避免污染 repo 根的 logs/。"""
+    log_dir = tmp_path / "logs"
+    monkeypatch.setattr(am, "get_log_dir", lambda: log_dir)
+    return log_dir
+
+
 def test_build_plist_is_valid_and_correct(tmp_path, monkeypatch):
     """_build_plist 输出能被 stdlib plistlib 解析,字段值正确。"""
     _mock_no_bundle(monkeypatch)
+    _mock_log_dir(monkeypatch, tmp_path)
     # 让 _program_arguments 走 fallback 路径,避免依赖 sys.prefix
     monkeypatch.setattr(sys, "prefix", str(tmp_path))
 
@@ -66,6 +74,9 @@ def test_build_plist_is_valid_and_correct(tmp_path, monkeypatch):
         "-m",
         "whisper_input",
     ]
+    expected_log = str(tmp_path / "logs" / "whisper-input-launchd.log")
+    assert parsed["StandardOutPath"] == expected_log
+    assert parsed["StandardErrorPath"] == expected_log
 
 
 def test_set_autostart_true_writes_file(tmp_path, monkeypatch):
@@ -74,11 +85,13 @@ def test_set_autostart_true_writes_file(tmp_path, monkeypatch):
     target_file = target_dir / "com.whisper-input.plist"
     monkeypatch.setattr(am, "AUTOSTART_DIR", str(target_dir))
     monkeypatch.setattr(am, "AUTOSTART_FILE", str(target_file))
+    log_dir = _mock_log_dir(monkeypatch, tmp_path)
 
     assert not am.is_autostart_enabled()
     am.set_autostart(True)
     assert target_file.is_file()
     assert am.is_autostart_enabled()
+    assert log_dir.is_dir()  # set_autostart 顺手建了日志目录
 
     # 内容是合法 plist
     parsed = plistlib.loads(target_file.read_bytes())

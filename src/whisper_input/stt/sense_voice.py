@@ -19,7 +19,10 @@ from pathlib import Path
 
 import numpy as np
 
+from whisper_input.logger import get_logger
 from whisper_input.stt.base import BaseSTT
+
+logger = get_logger(__name__)
 
 _SAMPLE_RATE = 16000
 _BLANK_ID = 0
@@ -68,7 +71,7 @@ class SenseVoiceSTT(BaseSTT):
 
         from whisper_input.i18n import t
 
-        print(f"[sensevoice] {t('sensevoice.preparing')}")
+        logger.info("model_preparing", message=t("sensevoice.preparing"))
         # 主仓库:ONNX 量化模型 + tokens.json + am.mvn + config.yaml(4 个文件,~231 MB)
         onnx_dir = Path(snapshot_download("iic/SenseVoiceSmall-onnx"))
         # 姐妹仓库是 PyTorch 原版,体积 ~900 MB。这里只为取 BPE tokenizer 一个文件,
@@ -81,7 +84,11 @@ class SenseVoiceSTT(BaseSTT):
         )
         bpe_file = bpe_dir / "chn_jpn_yue_eng_ko_spectok.bpe.model"
 
-        print(f"[sensevoice] {t('sensevoice.loading', path=onnx_dir)}")
+        logger.info(
+            "model_loading",
+            path=str(onnx_dir),
+            message=t("sensevoice.loading", path=onnx_dir),
+        )
 
         import onnxruntime as ort
         import yaml
@@ -114,9 +121,10 @@ class SenseVoiceSTT(BaseSTT):
             sess_options=opts,
             providers=["CPUExecutionProvider"],
         )
-        print(
-            f"[sensevoice] "
-            f"{t('sensevoice.loaded', threads=self.num_threads)}"
+        logger.info(
+            "model_loaded",
+            num_threads=self.num_threads,
+            message=t("sensevoice.loaded", threads=self.num_threads),
         )
 
     def transcribe(self, wav_data: bytes) -> str:

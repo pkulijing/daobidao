@@ -15,6 +15,10 @@ from AppKit import (
 )
 from Foundation import NSObject
 
+from whisper_input.logger import get_logger
+
+logger = get_logger(__name__)
+
 # 药丸尺寸
 _W, _H = 120, 34
 _PILL_R = 17
@@ -119,8 +123,8 @@ class _MainThreadRunner(NSObject):
     def run_(self, _arg):
         try:
             self._block()
-        except Exception as e:
-            print(f"[overlay] 主线程回调异常: {e}")
+        except Exception:
+            logger.exception("main_thread_cb_failed")
 
 
 class RecordingOverlay:

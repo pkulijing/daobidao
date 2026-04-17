@@ -261,6 +261,25 @@
         <span class="slider"></span>
       </label>
     </div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label" data-i18n="settings.log_level">日志级别</div>
+        <div class="setting-desc" data-i18n="settings.log_level_desc">排查问题时切到 DEBUG，改后需重启生效</div>
+      </div>
+      <select id="log_level">
+        <option value="DEBUG">DEBUG</option>
+        <option value="INFO">INFO</option>
+        <option value="WARNING">WARNING</option>
+        <option value="ERROR">ERROR</option>
+      </select>
+    </div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label" data-i18n="settings.open_log_dir">日志目录</div>
+        <div class="setting-desc" data-i18n="settings.open_log_dir_desc">在文件管理器中打开日志目录</div>
+      </div>
+      <button class="btn btn-secondary" onclick="openLogDir()" data-i18n="settings.open_log_dir_btn">打开</button>
+    </div>
     <div class="notice" data-i18n="settings.restart_notice">
       修改快捷键或端口后需要重启程序才能生效
     </div>
@@ -367,6 +386,8 @@ async function loadConfig() {
       config.settings_port || 51230;
     document.getElementById('autostart').checked =
       autostart.enabled || false;
+    document.getElementById('log_level').value =
+      config.log_level || 'INFO';
 
     // 从配置同步语言
     var cfgLang = config.ui && config.ui.language ? config.ui.language : 'zh';
@@ -379,7 +400,7 @@ async function loadConfig() {
   }
 }
 
-var RESTART_KEYS = [HOTKEY_KEY, 'settings_port'];
+var RESTART_KEYS = [HOTKEY_KEY, 'settings_port', 'log_level'];
 
 async function saveSetting(key, value) {
   try {
@@ -457,6 +478,20 @@ async function restartApp() {
   setTimeout(function() { location.reload(); }, 3000);
 }
 
+async function openLogDir() {
+  try {
+    var res = await fetch('/api/open-log-dir', {method: 'POST'});
+    var body = await res.json();
+    if (!res.ok || !body.ok) {
+      showToast(i18n('settings.open_log_dir_failed') + ': ' + (body.error || ''), 3000);
+      return;
+    }
+    showToast(i18n('settings.open_log_dir_ok'), 1500);
+  } catch (e) {
+    showToast(i18n('settings.open_log_dir_failed') + ': ' + e.message, 3000);
+  }
+}
+
 // 绑定控件变化事件，自动保存
 function bindAutoSave() {
   document.getElementById('hotkey').addEventListener('change', function() {
@@ -481,6 +516,9 @@ function bindAutoSave() {
   });
   document.getElementById('autostart').addEventListener('change', function() {
     saveAutostart(this.checked);
+  });
+  document.getElementById('log_level').addEventListener('change', function() {
+    saveSetting('log_level', this.value);
   });
   // 语言切换
   document.getElementById('ui_language').addEventListener('change', function() {

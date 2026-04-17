@@ -3,6 +3,7 @@
 import json
 import os
 import signal
+import subprocess
 import sys
 import threading
 import webbrowser
@@ -14,6 +15,9 @@ from string import Template
 from whisper_input.backends import IS_MACOS
 from whisper_input.config_manager import ConfigManager
 from whisper_input.i18n import get_all_locales, get_language, t
+from whisper_input.logger import get_log_dir, get_logger
+
+logger = get_logger(__name__)
 
 # 支持的热键 key code 列表（按平台不同，标签由前端从 locale 查找）
 if IS_MACOS:
@@ -150,6 +154,8 @@ class _SettingsHandler(BaseHTTPRequestHandler):
             self._handle_quit()
         elif self.path == "/api/restart":
             self._handle_restart()
+        elif self.path == "/api/open-log-dir":
+            self._handle_open_log_dir()
         else:
             self.send_error(404)
 
@@ -209,6 +215,21 @@ class _SettingsHandler(BaseHTTPRequestHandler):
             lambda: os.kill(os.getpid(), signal.SIGTERM),
         ).start()
 
+    def _handle_open_log_dir(self) -> None:
+        log_dir = get_log_dir()
+        log_dir.mkdir(parents=True, exist_ok=True)
+        opener = "open" if IS_MACOS else "xdg-open"
+        try:
+            subprocess.Popen(
+                [opener, str(log_dir)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except (OSError, FileNotFoundError) as e:
+            self._send_json({"ok": False, "error": str(e)}, 500)
+            return
+        self._send_json({"ok": True, "path": str(log_dir)})
+
     def _handle_restart(self) -> None:
         self._send_json({"ok": True})
 
@@ -256,8 +277,10 @@ class SettingsServer:
             daemon=True,
         )
         self._thread.start()
-        print(
-            f"[settings] {t('server.started', port=self._port)}"
+        logger.info(
+            "server_started",
+            port=self._port,
+            message=t("server.started", port=self._port),
         )
         return self._port
 

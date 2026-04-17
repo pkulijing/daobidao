@@ -9,6 +9,9 @@ import evdev
 from evdev import ecodes
 
 from whisper_input.i18n import t
+from whisper_input.logger import get_logger
+
+logger = get_logger(__name__)
 
 # 支持的热键映射
 SUPPORTED_KEYS = {
@@ -41,8 +44,15 @@ def find_keyboard_devices() -> list[evdev.InputDevice]:
                 # 检查是否有常见的键盘按键（字母键）
                 if ecodes.KEY_A in key_caps and ecodes.KEY_Z in key_caps:
                     keyboards.append(device)
-                    print(
-                        f"[hotkey] {t('hotkey.found_keyboard', name=device.name, path=device.path)}"
+                    logger.debug(
+                        "keyboard_found",
+                        name=device.name,
+                        path=device.path,
+                        message=t(
+                            "hotkey.found_keyboard",
+                            name=device.name,
+                            path=device.path,
+                        ),
                     )
         except (PermissionError, OSError):
             continue
@@ -128,14 +138,18 @@ class HotkeyListener:
         """监听循环。"""
         keyboards = find_keyboard_devices()
         if not keyboards:
-            print(f"[hotkey] {t('hotkey.no_keyboard')}")
-            print(f"  {t('hotkey.run_as_root')}")
-            print(f"  {t('hotkey.add_input_group')}")
+            logger.error(
+                "no_keyboard",
+                message=t("hotkey.no_keyboard"),
+                hint_run_as_root=t("hotkey.run_as_root"),
+                hint_input_group=t("hotkey.add_input_group"),
+            )
             return
 
-        print(
-            f"[hotkey] "
-            f"{t('hotkey.listening', hotkey=self.hotkey_name)}"
+        logger.info(
+            "hotkey_listening",
+            hotkey=self.hotkey_name,
+            message=t("hotkey.listening", hotkey=self.hotkey_name),
         )
 
         while self._running:

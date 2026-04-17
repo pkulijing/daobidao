@@ -559,6 +559,15 @@ wheels = [
 ]
 
 [[package]]
+name = "structlog"
+version = "25.5.0"
+source = { registry = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple" }
+sdist = { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/ef/52/9ba0f43b686e7f3ddfeaa78ac3af750292662284b3661e91ad5494f21dbc/structlog-25.5.0.tar.gz", hash = "sha256:098522a3bebed9153d4570c6d0288abf80a031dfdb2048d59a49e9dc2190fc98", size = 1460830, upload-time = "2025-10-27T08:28:23.028Z" }
+wheels = [
+    { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/a8/45/a132b9074aa18e799b891b91ad72133c98d8042c70f6240e4c5f9dabee2f/structlog-25.5.0-py3-none-any.whl", hash = "sha256:a8453e9b9e636ec59bd9e79bbd4a72f025981b3ba0f5837aebf48f02f37a7f9f", size = 72510, upload-time = "2025-10-27T08:28:21.535Z" },
+]
+
+[[package]]
 name = "sympy"
 version = "1.14.0"
 source = { registry = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple" }
@@ -610,6 +619,7 @@ dependencies = [
     { name = "sentencepiece" },
     { name = "sounddevice" },
     { name = "soundfile" },
+    { name = "structlog" },
 ]
 
 [package.dev-dependencies]
@@ -635,6 +645,7 @@ requires-dist = [
     { name = "sentencepiece", specifier = ">=0.2.1" },
     { name = "sounddevice", specifier = ">=0.4.6" },
     { name = "soundfile", specifier = ">=0.13.1" },
+    { name = "structlog", specifier = ">=24.0" },
 ]
 
 [package.metadata.requires-dev]

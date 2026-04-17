@@ -7,6 +7,10 @@ import wave
 import numpy as np
 import sounddevice as sd
 
+from whisper_input.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 class AudioRecorder:
     """按住录音，松开停止。录音数据保存为 16kHz 单声道 WAV。"""
@@ -57,7 +61,11 @@ class AudioRecorder:
         if status:
             from whisper_input.i18n import t
 
-            print(f"[recorder] {t('recorder.status', status=status)}")
+            logger.warning(
+                "stream_status",
+                status=str(status),
+                message=t("recorder.status", status=status),
+            )
         self._frames.append(indata.copy())
         if self.on_level:
             rms = np.sqrt(np.mean(indata.astype(np.float32) ** 2))
@@ -69,11 +77,11 @@ class AudioRecorder:
         audio = np.concatenate(self._frames, axis=0)
         duration = len(audio) / self.sample_rate
         rms = np.sqrt(np.mean(audio.astype(np.float32) ** 2))
-        from whisper_input.i18n import t
-
-        print(
-            f"[recorder] "
-            f"{t('recorder.info', duration=f'{duration:.1f}', samples=len(audio), rms=f'{rms:.0f}')}"
+        logger.debug(
+            "recording_stats",
+            duration_s=round(duration, 2),
+            samples=len(audio),
+            rms=round(float(rms), 1),
         )
         buf = io.BytesIO()
         with wave.open(buf, "wb") as wf:
