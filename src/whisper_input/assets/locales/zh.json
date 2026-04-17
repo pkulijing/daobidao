@@ -69,7 +69,6 @@
   "main.tray_on": "托盘状态已开启",
   "main.tray_off": "托盘状态已关闭",
   "main.preload": "预加载 STT 模型...",
-  "main.perm_fail": "权限不足，请授权后重新启动程序",
   "main.overlay_unavail": "录音浮窗不可用",
   "main.shutting_down": "正在退出...",
   "main.ready": "就绪！按住热键开始说话",
@@ -83,10 +82,10 @@
   "cli.no_tray_help": "禁用系统托盘",
   "cli.no_preload_help": "不预加载模型",
 
-  "perm.input_monitoring": "输入监控",
   "perm.accessibility": "辅助功能",
   "perm.need_grant": "缺少权限：{names}",
-  "perm.grant_then_restart": "请在系统弹出的对话框或「系统设置 > 隐私与安全性」中为 Whisper Input 授权，然后重新运行 whisper-input。",
+  "perm.waiting_for_grant": "等待授权中... 请在系统弹窗或「系统设置 > 隐私与安全性」中为 Whisper Input 打开对应开关。",
+  "perm.granted_restarting": "权限已到位，重启以应用...",
 
   "hotkey.listening": "正在监听热键: {hotkey}",
   "hotkey.listen_fail": "启动键盘监听失败: {error}",

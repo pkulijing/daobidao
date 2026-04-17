@@ -196,12 +196,17 @@ def launch_via_bundle(extra_args: list[str] | None = None) -> None:
 
 
 def restart_via_bundle() -> None:
-    """在 bundle 模式下重启应用。"""
-    subprocess.Popen(["/usr/bin/open", "-a", APP_BUNDLE_PATH])
-    # 给 open 一点时间启动新进程
-    import time
-    time.sleep(0.5)
-    os._exit(0)
+    """在 bundle 模式下重启应用。
+
+    直接 execv 到 launcher binary，绕开 LaunchServices。
+    这样避免 open -a 因 LaunchServices 缓存过时返回 -600 的问题。
+    binary 在 .app/Contents/MacOS/ 下且 cdhash 不变，TCC 身份仍然归属
+    Whisper Input bundle。
+    """
+    launcher = os.path.join(
+        APP_BUNDLE_PATH, "Contents", "MacOS", "whisper-input"
+    )
+    os.execv(launcher, [launcher])
 
 
 def _confirm(prompt: str) -> bool:

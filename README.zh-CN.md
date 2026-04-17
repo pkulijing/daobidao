@@ -59,7 +59,7 @@ whisper-input
 
 **首次运行需要在「系统设置 > 隐私与安全性」中授予权限：**
 
-1. **辅助功能** 和 **输入监听**（全局热键监听和文字输入）
+1. **辅助功能**（全局热键监听和文字输入）
 2. **麦克风**（语音录制，首次录音时系统会弹出授权对话框）
 
 > **注意**：首次运行（或执行 `whisper-input --init`）时，工具会在 `~/Applications/Whisper Input.app` 安装一个极简 `.app` bundle。macOS 系统权限对话框和系统设置里显示的都是 "Whisper Input"，直接给这个条目授权即可。完整卸载请先运行 `whisper-input --uninstall`，再执行 `uv tool uninstall whisper-input`。

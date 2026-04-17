@@ -69,7 +69,6 @@
   "main.tray_on": "\u00c9tat de l\u2019ic\u00f4ne activ\u00e9",
   "main.tray_off": "\u00c9tat de l\u2019ic\u00f4ne d\u00e9sactiv\u00e9",
   "main.preload": "Pr\u00e9chargement du mod\u00e8le STT\u2026",
-  "main.perm_fail": "Permissions insuffisantes. Veuillez accorder l\u2019acc\u00e8s et red\u00e9marrer.",
   "main.overlay_unavail": "Fen\u00eatre d\u2019enregistrement non disponible",
   "main.shutting_down": "Arr\u00eat en cours\u2026",
   "main.ready": "Pr\u00eat ! Maintenez le raccourci pour commencer \u00e0 parler",
@@ -83,10 +82,10 @@
   "cli.no_tray_help": "d\u00e9sactiver l\u2019ic\u00f4ne syst\u00e8me",
   "cli.no_preload_help": "ne pas pr\u00e9charger le mod\u00e8le",
 
-  "perm.input_monitoring": "Surveillance des entr\u00e9es",
   "perm.accessibility": "Accessibilit\u00e9",
   "perm.need_grant": "Permissions manquantes : {names}",
-  "perm.grant_then_restart": "Veuillez accorder l\u2019acc\u00e8s \u00e0 Whisper Input dans la bo\u00eete de dialogue syst\u00e8me ou dans Param\u00e8tres > Confidentialit\u00e9 et s\u00e9curit\u00e9, puis relancez whisper-input.",
+  "perm.waiting_for_grant": "En attente de l\u2019autorisation\u2026 Veuillez activer Whisper Input dans la bo\u00eete de dialogue syst\u00e8me ou dans Param\u00e8tres > Confidentialit\u00e9 et s\u00e9curit\u00e9.",
+  "perm.granted_restarting": "Permissions accord\u00e9es, red\u00e9marrage en cours\u2026",
 
   "hotkey.listening": "\u00c9coute du raccourci : {hotkey}",
   "hotkey.listen_fail": "\u00c9chec du d\u00e9marrage de l\u2019\u00e9coute clavier : {error}",

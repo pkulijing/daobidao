@@ -69,7 +69,6 @@
   "main.tray_on": "Tray status enabled",
   "main.tray_off": "Tray status disabled",
   "main.preload": "Preloading STT model...",
-  "main.perm_fail": "Insufficient permissions. Please grant access and restart.",
   "main.overlay_unavail": "Recording overlay unavailable",
   "main.shutting_down": "Shutting down...",
   "main.ready": "Ready! Hold the hotkey to start speaking",
@@ -83,10 +82,10 @@
   "cli.no_tray_help": "disable system tray",
   "cli.no_preload_help": "skip model preloading",
 
-  "perm.input_monitoring": "Input Monitoring",
   "perm.accessibility": "Accessibility",
   "perm.need_grant": "Missing permissions: {names}",
-  "perm.grant_then_restart": "Please grant access to Whisper Input in the system dialog or System Settings > Privacy & Security, then re-run whisper-input.",
+  "perm.waiting_for_grant": "Waiting for grant... Please enable Whisper Input in the system prompt or System Settings > Privacy & Security.",
+  "perm.granted_restarting": "Permissions granted, restarting to apply...",
 
   "hotkey.listening": "Listening for hotkey: {hotkey}",
   "hotkey.listen_fail": "Failed to start keyboard listener: {error}",

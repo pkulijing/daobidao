@@ -3,6 +3,8 @@
 需要在「系统设置 > 隐私与安全性 > 辅助功能」中授权终端或应用。
 """
 
+import os
+import sys
 import threading
 from collections.abc import Callable
 
@@ -12,48 +14,57 @@ from whisper_input.i18n import t
 
 
 def check_macos_permissions() -> bool:
-    """检查 macOS 权限，缺失时触发系统原生弹窗并退出。
+    """检查 macOS 辅助功能权限，缺失时触发系统弹窗并等待授权。
 
-    需要两个权限：
-    - 辅助功能 (Accessibility)：AXIsProcessTrustedWithOptions 触发系统弹窗
-    - 输入监控 (Input Monitoring)：CGRequestListenEventAccess 触发系统弹窗
+    只需要 Accessibility。我们用 pynput 的 kCGSessionEventTap +
+    kCGEventTapOptionListenOnly 组合，Accessibility 就够了，不需要
+    Input Monitoring（后者是 kCGHIDEventTap 才需要的）。
 
-    返回 True 表示权限已就绪；否则 False（调用方应退出程序）。
+    实现要点：
+    - 轮询用 CFRunLoopRunInMode 而非 time.sleep，让 LaunchServices 启动
+      事件能被处理（否则 open -a 会超时 -1712），TCC 弹窗也需要 runloop
+      才能显示。
+    - 授权到位后自动重启：event tap 创建时绑定权限状态，新权限必须
+      在新进程里才能生效。
     """
     try:
         from ApplicationServices import (
+            AXIsProcessTrusted,
             AXIsProcessTrustedWithOptions,
             kAXTrustedCheckOptionPrompt,
         )
-        from Quartz import (
-            CGPreflightListenEventAccess,
-            CGRequestListenEventAccess,
+        from CoreFoundation import (
+            CFRunLoopRunInMode,
+            kCFRunLoopDefaultMode,
         )
     except ImportError:
         return True  # pyobjc 未安装，跳过
 
-    # AXIsProcessTrustedWithOptions({Prompt: True}) 会在未授权时
-    # 触发 macOS 原生的辅助功能授权对话框。
-    accessibility_ok = AXIsProcessTrustedWithOptions(
-        {kAXTrustedCheckOptionPrompt: True}
-    )
-    input_monitoring_ok = CGPreflightListenEventAccess()
-    if not input_monitoring_ok:
-        # 触发系统原生的输入监控授权对话框（仅首次调用会弹）
-        CGRequestListenEventAccess()
-
-    if accessibility_ok and input_monitoring_ok:
+    if AXIsProcessTrusted():
         return True
 
-    missing = []
-    if not accessibility_ok:
-        missing.append(t("perm.accessibility"))
-    if not input_monitoring_ok:
-        missing.append(t("perm.input_monitoring"))
+    print(
+        f"[perm] "
+        f"{t('perm.need_grant', names=t('perm.accessibility'))}"
+    )
+    AXIsProcessTrustedWithOptions(
+        {kAXTrustedCheckOptionPrompt: True}
+    )
+    print(f"[perm] {t('perm.waiting_for_grant')}")
+    while not AXIsProcessTrusted():
+        CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.5, False)
 
-    print(f"[perm] {t('perm.need_grant', names='、'.join(missing))}")
-    print(f"[perm] {t('perm.grant_then_restart')}")
-    return False
+    print(f"[perm] {t('perm.granted_restarting')}")
+    from whisper_input.backends.app_bundle_macos import (
+        BUNDLE_ENV_KEY,
+        restart_via_bundle,
+    )
+
+    if os.environ.get(BUNDLE_ENV_KEY):
+        restart_via_bundle()
+    else:
+        os.execv(sys.executable, [sys.executable, *sys.argv])
+    return True  # unreachable
 
 # 支持的热键映射
 # 注意: pynput 中左侧修饰键不带 _l 后缀（Key.ctrl, Key.alt, Key.cmd）

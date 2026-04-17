@@ -312,13 +312,12 @@ def main():
     print(f"  {t('main.hotkey', hotkey=hotkey)}")
     print("=" * 50)
 
-    # macOS: 启动前检查辅助功能和输入监控权限
+    # macOS: 启动前检查辅助功能权限
+    # check_macos_permissions() 要么返回 True，要么阻塞等待授权然后重启
     if sys.platform == "darwin":
         from whisper_input.backends.hotkey_macos import check_macos_permissions
 
-        if not check_macos_permissions():
-            print(f"[main] {t('main.perm_fail')}")
-            sys.exit(1)
+        check_macos_permissions()
 
     # 创建主控制器
     wi = WhisperInput(config)

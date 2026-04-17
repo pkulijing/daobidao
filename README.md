@@ -59,10 +59,10 @@ whisper-input
 
 **First-run permissions required in System Settings > Privacy & Security:**
 
-1. **Accessibility** and **Input Monitoring** (for global hotkey listening and text input)
+1. **Accessibility** (for global hotkey listening and text input)
 2. **Microphone** (for voice recording; the system will prompt on first recording)
 
-> **Note**: On first run (or via `whisper-input --init`), the tool installs a minimal `.app` bundle at `~/Applications/Whisper Input.app`. macOS permission dialogs and System Settings entries will show "Whisper Input" — grant Accessibility / Input Monitoring to that entry. To fully uninstall, run `whisper-input --uninstall` before `uv tool uninstall whisper-input`.
+> **Note**: On first run (or via `whisper-input --init`), the tool installs a minimal `.app` bundle at `~/Applications/Whisper Input.app`. macOS permission dialogs and System Settings entries will show "Whisper Input" — grant Accessibility to that entry. To fully uninstall, run `whisper-input --uninstall` before `uv tool uninstall whisper-input`.
 
 ### Linux
 
