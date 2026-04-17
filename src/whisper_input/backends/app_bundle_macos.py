@@ -168,7 +168,19 @@ def install_app_bundle() -> str:
         capture_output=True,
     )
 
-    # 7. 保存 venv 路径
+    # 7. 清掉旧 TCC 授权,避免"僵尸条目"问题。
+    #    TCC 按 (bundle_id, cdhash) 索引授权记录,CI 每次 release 重新
+    #    编译 launcher → cdhash 漂移。旧条目仍会显示在系统设置列表里
+    #    并看似"已打开",但实际对新 cdhash 不生效,用户只能手动删除。
+    #    这里主动清掉,让用户下次启动看到规范的新授权弹窗。
+    #    首次安装时无旧条目,tccutil 也返回 0,不影响。
+    logger.info("install_tcc_reset", bundle_id=BUNDLE_ID)
+    subprocess.run(
+        ["tccutil", "reset", "Accessibility", BUNDLE_ID],
+        capture_output=True,
+    )
+
+    # 8. 保存 venv 路径
     _save_venv_path()
 
     logger.info(
