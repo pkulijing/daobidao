@@ -8,11 +8,8 @@ from AppKit import (
     NSBezierPath,
     NSColor,
     NSFloatingWindowLevel,
-    NSFont,
     NSMakeRect,
-    NSMutableParagraphStyle,
     NSScreen,
-    NSString,
     NSView,
     NSWindow,
 )
@@ -56,26 +53,38 @@ class _OverlayView(NSView):
             rect, _PILL_R, _PILL_R
         ).fill()
 
-        # 麦克风 emoji 居中
-        emoji = NSString.stringWithString_("\U0001f399")
-        font = NSFont.systemFontOfSize_(15)
-        para = NSMutableParagraphStyle.alloc().init()
-        para.setAlignment_(1)  # NSTextAlignmentCenter
-        attrs = {
-            "NSFont": font,
-            "NSParagraphStyle": para,
-            "NSColor": NSColor.colorWithCalibratedRed_green_blue_alpha_(
-                1, 1, 1, 0.95
-            ),
-        }
-        emoji_size = emoji.sizeWithAttributes_(attrs)
-        emoji_rect = NSMakeRect(
-            cx - emoji_size.width / 2,
-            cy - emoji_size.height / 2,
-            emoji_size.width,
-            emoji_size.height,
+        # 矢量麦克风图标（不依赖 emoji 字体；AppKit 默认 Y 轴朝上）
+        white = NSColor.colorWithCalibratedRed_green_blue_alpha_(
+            1, 1, 1, 0.95
         )
-        emoji.drawInRect_withAttributes_(emoji_rect, attrs)
+        white.setFill()
+        white.setStroke()
+
+        # 话筒头 (rounded rect, w=7 h=11 r=3.5)
+        NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
+            NSMakeRect(cx - 3.5, cy - 3, 7, 11), 3.5, 3.5
+        ).fill()
+
+        # U 型托架（stroked polyline，圆角）
+        bracket = NSBezierPath.bezierPath()
+        bracket.setLineWidth_(1.6)
+        bracket.setLineCapStyle_(1)   # NSLineCapStyleRound
+        bracket.setLineJoinStyle_(1)  # NSLineJoinStyleRound
+        bracket.moveToPoint_((cx - 5, cy - 1))
+        bracket.lineToPoint_((cx - 5, cy - 5))
+        bracket.lineToPoint_((cx + 5, cy - 5))
+        bracket.lineToPoint_((cx + 5, cy - 1))
+        bracket.stroke()
+
+        # 连接杆
+        NSBezierPath.fillRect_(
+            NSMakeRect(cx - 0.8, cy - 8, 1.6, 3)
+        )
+
+        # 底座
+        NSBezierPath.fillRect_(
+            NSMakeRect(cx - 3, cy - 9.6, 6, 1.6)
+        )
 
         # 跳动长条
         bar_color = (

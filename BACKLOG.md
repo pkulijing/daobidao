@@ -183,16 +183,6 @@ curl -LsSf https://whisper-input.example/install.sh | sh
 
 ## 代码质量
 
-### 跨平台 Pythonic overlay（部分完成）
-
-**已完成（第 16 轮）**：视觉统一为微信输入法风格的深蓝药丸 + 居中麦克风 emoji + 两侧随音量跳动的白色长条。两个平台观感一致，代码从 ~190 行各降到 ~130 行。
-
-**未完成**：代码仍然是双份（`overlay_linux.py` 用 GTK3+Cairo，`overlay_macos.py` 用 AppKit）。经过第 16 轮讨论，Tkinter 在 macOS 上无法与 pystray 共享主线程（两个 GUI 框架都要占主线程），子进程方案可解但引入新的退出清理复杂度。结论：**维持双份原生实现，视觉已对齐，统一代码不是当前优先级**。
-
-**如果后续要统一**：最可行的方向是 Tauri 或类似的跨平台桌面框架全面接管 UI 层（含 tray + overlay + 设置页），但这是整个项目架构升级，不是 overlay 一个模块的事。
-
----
-
 ### 测试套增强（v2）
 
 15 轮搭起了 pytest 框架（`tests/` 下 75 个用例覆盖纯逻辑层 + 带 mock 的边界层 + 端到端 STT 推理 + 默认开启的覆盖率报告 + codecov 上传 + README 徽章，总线覆盖 ~51%），但有几个明显能继续推进的方向。**先做不做都不影响项目正常运行**，列在这里是为了记住来路：
@@ -211,3 +201,4 @@ curl -LsSf https://whisper-input.example/install.sh | sh
 
 - **首次模型下载进度 UI**（14 轮 SUMMARY 局限性 #3）—— 实测下载速度已经够快（ModelScope 国内 CDN 秒级），用户痛点不明显，不值得做
 - **Linux 实机验证**（14 轮 SUMMARY 局限性 #4）—— 已在干净 Ubuntu 上手动验证通过
+- **跨平台 Pythonic overlay 统一代码**（16 轮遗留）—— 视觉已在 16 轮对齐（微信输入法风格深蓝药丸），双份原生实现（GTK3+Cairo / AppKit）维持现状。Tkinter 与 pystray 主线程冲突、子进程方案引入退出清理复杂度，真要统一得换 Tauri 这类方案全面接管 UI 层，不是 overlay 一个模块的事，当前版本满意，不再追

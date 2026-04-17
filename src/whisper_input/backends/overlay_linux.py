@@ -79,17 +79,38 @@ class RecordingOverlay:
         cr.set_source_rgb(*_PILL_RGB)
         cr.fill()
 
-        # 麦克风 emoji 居中
+        # 矢量麦克风图标（不依赖 emoji 字体）
         cr.set_source_rgba(1, 1, 1, 0.95)
-        cr.select_font_face(
-            "sans-serif", 0, 0  # NORMAL, NORMAL
-        )
-        cr.set_font_size(15)
-        extents = cr.text_extents("\U0001f399")
-        tx = cx - extents.width / 2 - extents.x_bearing
-        ty = cy - extents.height / 2 - extents.y_bearing
-        cr.move_to(tx, ty)
-        cr.show_text("\U0001f399")
+
+        # 话筒头 (rounded rect, w=7 h=11 r=3.5)
+        cap_left = cx - 3.5
+        cap_top = cy - 8
+        cr.new_sub_path()
+        cr.arc(cap_left + 7 - 3.5, cap_top + 3.5, 3.5, -pi / 2, 0)
+        cr.arc(cap_left + 7 - 3.5, cap_top + 11 - 3.5, 3.5, 0, pi / 2)
+        cr.arc(cap_left + 3.5, cap_top + 11 - 3.5, 3.5, pi / 2, pi)
+        cr.arc(cap_left + 3.5, cap_top + 3.5, 3.5, pi, 3 * pi / 2)
+        cr.close_path()
+        cr.fill()
+
+        # U 型托架（stroked polyline，圆角）
+        cr.set_line_width(1.6)
+        cr.set_line_cap(1)   # ROUND
+        cr.set_line_join(1)  # ROUND
+        cr.new_path()
+        cr.move_to(cx - 5, cy + 1)
+        cr.line_to(cx - 5, cy + 5)
+        cr.line_to(cx + 5, cy + 5)
+        cr.line_to(cx + 5, cy + 1)
+        cr.stroke()
+
+        # 连接杆
+        cr.rectangle(cx - 0.8, cy + 5, 1.6, 3)
+        cr.fill()
+
+        # 底座
+        cr.rectangle(cx - 3, cy + 8, 6, 1.6)
+        cr.fill()
 
         # 跳动长条
         cr.set_source_rgba(1, 1, 1, 0.9)
