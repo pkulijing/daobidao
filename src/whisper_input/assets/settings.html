@@ -285,6 +285,36 @@
     </div>
   </div>
 
+  <div class="card">
+    <div class="card-title" data-i18n="settings.mic_check">麦克风检测</div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label" data-i18n="settings.mic_devices">可用设备</div>
+        <div id="mic_devices_list" class="setting-desc">—</div>
+      </div>
+    </div>
+    <div style="padding: 0 16px 8px;">
+      <canvas id="mic_wave" height="60"
+        style="width:100%; border-radius:6px; background:#f5f5f5; display:block;"></canvas>
+      <div id="mic_permission_hint" class="setting-desc" style="margin-top:4px;"
+        data-i18n="settings.mic_permission_hint">
+        授权麦克风权限后自动显示实时波形
+      </div>
+    </div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label" data-i18n="settings.mic_record">录音回放</div>
+        <div class="setting-desc" data-i18n="settings.mic_record_desc">
+          点击录制，再次点击停止并回放
+        </div>
+      </div>
+      <button id="mic_record_btn" class="btn btn-secondary" onclick="toggleMicRecord()">⏺ 录音</button>
+    </div>
+    <div id="mic_playback" style="display:none; padding: 4px 16px 12px;">
+      <audio id="mic_audio" controls style="width:100%;"></audio>
+    </div>
+  </div>
+
   <div class="actions">
     <button class="btn btn-danger" onclick="quitApp()" data-i18n="settings.quit">退出程序</button>
     <button class="btn btn-secondary" onclick="restartApp()" data-i18n="settings.restart">重启程序</button>
@@ -527,9 +557,104 @@ function bindAutoSave() {
   });
 }
 
+// ── 麦克风检测 ────────────────────────────────────────────────────
+var _micStream = null;
+var _micAnalyser = null;
+var _micWaveRAF = null;
+var _mediaRecorder = null;
+var _micChunks = [];
+
+async function initMicCheck() {
+  try {
+    var res = await fetch('/api/audio-devices');
+    var data = await res.json();
+    var el = document.getElementById('mic_devices_list');
+    if (data.devices.length === 0) {
+      el.innerHTML = '<span style="color:#e53935">' + i18n('settings.no_mic_devices') + '</span>';
+    } else {
+      el.innerHTML = data.devices
+        .map(function(d) { return (d.is_default ? '● ' : '○ ') + d.name; })
+        .join('<br>');
+    }
+  } catch (_) {}
+
+  try {
+    _micStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+        sampleRate: 44100
+      },
+      video: false
+    });
+    document.getElementById('mic_permission_hint').style.display = 'none';
+    var audioCtx = new AudioContext();
+    var src = audioCtx.createMediaStreamSource(_micStream);
+    _micAnalyser = audioCtx.createAnalyser();
+    _micAnalyser.fftSize = 1024;
+    src.connect(_micAnalyser);
+    drawMicWave();
+  } catch (_) {}
+}
+
+function drawMicWave() {
+  var canvas = document.getElementById('mic_wave');
+  var ctx = canvas.getContext('2d');
+  var buf = new Uint8Array(_micAnalyser.frequencyBinCount);
+
+  function frame() {
+    _micWaveRAF = requestAnimationFrame(frame);
+    _micAnalyser.getByteTimeDomainData(buf);
+    canvas.width = canvas.offsetWidth;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = '#4a90d9';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    var step = canvas.width / buf.length;
+    for (var i = 0; i < buf.length; i++) {
+      var y = (buf[i] / 128.0) * (canvas.height / 2);
+      if (i === 0) { ctx.moveTo(0, y); } else { ctx.lineTo(i * step, y); }
+    }
+    ctx.stroke();
+  }
+  frame();
+}
+
+function toggleMicRecord() {
+  var btn = document.getElementById('mic_record_btn');
+  if (!_micStream) {
+    showToast(i18n('settings.no_mic_devices'), 3000);
+    return;
+  }
+  if (_mediaRecorder && _mediaRecorder.state === 'recording') {
+    _mediaRecorder.stop();
+    btn.textContent = '⏺ ' + i18n('settings.mic_record_btn');
+    return;
+  }
+  _micChunks = [];
+  var mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+    ? 'audio/webm;codecs=opus' : 'audio/webm';
+  _mediaRecorder = new MediaRecorder(_micStream, {
+    mimeType: mimeType,
+    audioBitsPerSecond: 128000
+  });
+  _mediaRecorder.ondataavailable = function(e) { _micChunks.push(e.data); };
+  _mediaRecorder.onstop = function() {
+    var blob = new Blob(_micChunks, { type: 'audio/webm' });
+    var url = URL.createObjectURL(blob);
+    var audio = document.getElementById('mic_audio');
+    audio.src = url;
+    document.getElementById('mic_playback').style.display = 'block';
+    audio.play();
+  };
+  _mediaRecorder.start();
+  btn.textContent = '⏹ ' + i18n('settings.mic_stop_btn');
+}
+
 // 页面加载时初始化
 applyLocale(currentLang);
-loadConfig().then(bindAutoSave);
+loadConfig().then(function() { bindAutoSave(); initMicCheck(); });
 </script>
 </body>
 </html>

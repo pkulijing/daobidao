@@ -140,6 +140,8 @@ class _SettingsHandler(BaseHTTPRequestHandler):
             self._send_json(config_mgr.config)
         elif self.path == "/api/autostart":
             self._send_json({"enabled": _is_autostart_enabled()})
+        elif self.path == "/api/audio-devices":
+            self._handle_audio_devices()
         else:
             self.send_error(404)
 
@@ -229,6 +231,26 @@ class _SettingsHandler(BaseHTTPRequestHandler):
             self._send_json({"ok": False, "error": str(e)}, 500)
             return
         self._send_json({"ok": True, "path": str(log_dir)})
+
+    def _handle_audio_devices(self) -> None:
+        import sounddevice as sd
+
+        try:
+            devices = sd.query_devices()
+            default_input = sd.default.device[0]
+            result = [
+                {
+                    "index": i,
+                    "name": d["name"],
+                    "channels": d["max_input_channels"],
+                    "is_default": (i == default_input),
+                }
+                for i, d in enumerate(devices)
+                if d["max_input_channels"] > 0
+            ]
+        except Exception:
+            result = []
+        self._send_json({"devices": result})
 
     def _handle_restart(self) -> None:
         self._send_json({"ok": True})
