@@ -98,20 +98,21 @@ graph TD
   ROOT --> pd["产品设计"]:::epic
   ROOT --> ea["工程架构"]:::epic
 
-  pd --> e_init
-  pd --> e_stream
-  pd --> e_uiux
-  pd --> e_mic_check
-  pd --> e_remote
+  pd --> uiux_design["UI/UX 设计"]:::epic
+  pd --> recognition["识别效果"]:::epic
+  pd --> usage["使用场景"]:::epic
 
-  subgraph e_init["✅ 初始实现"]
+  uiux_design --> e_mvp
+  uiux_design --> e_uiux
+
+  recognition --> e_stream
+
+  usage --> e_mic_check
+  usage --> e_remote
+
+  subgraph e_mvp["✅ MVP"]
     direction TB
     N0["🌱 0 · 语音输入工具初始实现"]:::genesis
-  end
-
-  subgraph e_stream["🔄 流式识别"]
-    direction TB
-    N1["🔬 1 · 流式识别"]:::research
   end
 
   subgraph e_uiux["🔄 UI/UX优化"]
@@ -120,6 +121,11 @@ graph TD
     N6["✨ 6 · 产品正规化"]:::feature
     N16["🏗️ 16 · 架构整理与浮窗视觉统一"]:::refactor
     N2 ~~~ N6 ~~~ N16
+  end
+
+  subgraph e_stream["🔄 流式识别"]
+    direction TB
+    N1["🔬 1 · 流式识别"]:::research
   end
 
   subgraph e_mic_check["✅ 麦克风检测"]
@@ -188,7 +194,7 @@ graph TD
 
 | #   | 名称                      | 类型    | 所属 Epic     | 一句话描述                                                                                 |
 | --- | ------------------------- | ------- | ------------- | ------------------------------------------------------------------------------------------ |
-| 0   | 语音输入工具初始实现      | 🌱 初建 | 初始实现      | 实现双引擎（本地 SenseVoice + 云端豆包）Linux 语音输入工具，evdev 监听热键，剪贴板粘贴文字 |
+| 0   | 语音输入工具初始实现      | 🌱 初建 | MVP           | 实现双引擎（本地 SenseVoice + 云端豆包）Linux 语音输入工具，evdev 监听热键，剪贴板粘贴文字 |
 | 1   | 流式识别                  | 🔬 探索 | 流式识别      | 探索 SenseVoice/Paraformer 流式识别，因伪影与质量问题搁置                                  |
 | 2   | 程序交互标准化            | ✨ 功能 | UI/UX优化     | 将程序改造为带系统托盘和 Web 设置页的 Ubuntu 桌面应用，支持 DEB 安装                       |
 | 3   | DEB安装体验优化           | 📦 工程 | Linux安装加速 | 将依赖安装与模型下载移至首次启动，用 tkinter 进度窗口统一展示                              |
