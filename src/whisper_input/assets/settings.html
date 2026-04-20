@@ -180,6 +180,22 @@
     opacity: 1;
     transform: translateX(-50%) translateY(0);
   }
+  .update-banner {
+    border-color: var(--primary);
+    background: #fff7f3;
+  }
+  .update-banner-body {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    gap: 16px;
+  }
+  .update-text { font-size: 14px; color: var(--text); }
+  .update-text strong { color: var(--primary); margin-right: 6px; }
+  .update-banner-hint {
+    padding: 0 20px 12px;
+  }
 </style>
 </head>
 <body>
@@ -188,6 +204,21 @@
   <p data-i18n="settings.subtitle">语音输入工具 - 按住快捷键说话，松开自动输入</p>
 </div>
 <div class="container">
+  <div class="card update-banner" id="update_banner" style="display:none;">
+    <div class="update-banner-body">
+      <div class="update-text">
+        <strong data-i18n="update.new_version">发现新版本</strong>
+        v<span id="update_current"></span> → v<span id="update_latest"></span>
+      </div>
+      <button class="btn btn-primary" id="update_apply_btn"
+              onclick="applyUpdate()" data-i18n="update.apply_btn">
+        立即更新
+      </button>
+    </div>
+    <div class="setting-desc update-banner-hint" data-i18n="update.hint">
+      更新完成后需要手动重启 Whisper Input
+    </div>
+  </div>
   <div class="card">
     <div class="card-title" data-i18n="settings.basic">基本设置</div>
     <div class="setting-row">
@@ -258,6 +289,16 @@
       </div>
       <label class="switch">
         <input type="checkbox" id="autostart">
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label" data-i18n="settings.update_check">自动检查更新</div>
+        <div class="setting-desc" data-i18n="settings.update_check_desc">启动时查询 PyPI 是否有新版本</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="update_check_enabled">
         <span class="slider"></span>
       </label>
     </div>
@@ -418,6 +459,8 @@ async function loadConfig() {
       autostart.enabled || false;
     document.getElementById('log_level').value =
       config.log_level || 'INFO';
+    document.getElementById('update_check_enabled').checked =
+      config.update ? config.update.check_enabled !== false : true;
 
     // 从配置同步语言
     var cfgLang = config.ui && config.ui.language ? config.ui.language : 'zh';
@@ -508,6 +551,46 @@ async function restartApp() {
   setTimeout(function() { location.reload(); }, 3000);
 }
 
+async function checkUpdate() {
+  try {
+    var res = await fetch('/api/update/check');
+    var data = await res.json();
+    if (data.has_update) {
+      document.getElementById('update_current').textContent = data.current;
+      document.getElementById('update_latest').textContent = data.latest;
+      document.getElementById('update_banner').style.display = 'block';
+    } else {
+      document.getElementById('update_banner').style.display = 'none';
+    }
+  } catch (_) {}
+}
+
+async function applyUpdate() {
+  var btn = document.getElementById('update_apply_btn');
+  btn.disabled = true;
+  var origText = btn.textContent;
+  btn.textContent = i18n('update.applying');
+  try {
+    var res = await fetch('/api/update/apply', {method: 'POST'});
+    var data = await res.json();
+    if (data.ok) {
+      showToast(i18n('update.done'), 5000);
+      btn.textContent = i18n('update.done_btn');
+      // 成功后按钮保持 disabled —— 新版本已写入磁盘，再点也是 no-op
+    } else {
+      var msg = i18n('update.failed');
+      if (data.output) msg += ': ' + data.output.slice(0, 200);
+      showToast(msg, 6000);
+      btn.disabled = false;
+      btn.textContent = origText;
+    }
+  } catch (e) {
+    showToast(i18n('update.failed') + ': ' + e.message, 5000);
+    btn.disabled = false;
+    btn.textContent = origText;
+  }
+}
+
 async function openLogDir() {
   try {
     var res = await fetch('/api/open-log-dir', {method: 'POST'});
@@ -549,6 +632,10 @@ function bindAutoSave() {
   });
   document.getElementById('log_level').addEventListener('change', function() {
     saveSetting('log_level', this.value);
+  });
+  document.getElementById('update_check_enabled').addEventListener('change', function() {
+    saveSetting('update.check_enabled', this.checked);
+    if (this.checked) checkUpdate();
   });
   // 语言切换
   document.getElementById('ui_language').addEventListener('change', function() {
@@ -654,7 +741,11 @@ function toggleMicRecord() {
 
 // 页面加载时初始化
 applyLocale(currentLang);
-loadConfig().then(function() { bindAutoSave(); initMicCheck(); });
+loadConfig().then(function() {
+  bindAutoSave();
+  initMicCheck();
+  checkUpdate();
+});
 </script>
 </body>
 </html>

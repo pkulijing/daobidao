@@ -16,6 +16,7 @@ from whisper_input.backends import IS_MACOS
 from whisper_input.config_manager import ConfigManager
 from whisper_input.i18n import get_all_locales, get_language, t
 from whisper_input.logger import get_log_dir, get_logger
+from whisper_input.updater import UpdateChecker, apply_upgrade
 
 logger = get_logger(__name__)
 
@@ -78,12 +79,13 @@ def _get_settings_html() -> str:
     from whisper_input.config_manager import HOTKEY_CONFIG_KEY
     from whisper_input.version import __commit__, __version__
 
-    # commit 链接
+    # commit 链接 —— 指向 tree/<sha> 而非 commit/<sha>
+    # （tree 是该 commit 时刻的文件浏览页，更贴近"我现在跑的代码长什么样"的意图）
     if __commit__:
         short = __commit__[:7]
         commit_html = (
             f'(<a href="https://github.com/pkulijing/'
-            f'whisper-input/commit/{__commit__}"'
+            f'whisper-input/tree/{__commit__}"'
             f' target="_blank">{short}</a>)'
         )
     else:
@@ -142,6 +144,8 @@ class _SettingsHandler(BaseHTTPRequestHandler):
             self._send_json({"enabled": _is_autostart_enabled()})
         elif self.path == "/api/audio-devices":
             self._handle_audio_devices()
+        elif self.path == "/api/update/check":
+            self._handle_update_check()
         else:
             self.send_error(404)
 
@@ -158,6 +162,8 @@ class _SettingsHandler(BaseHTTPRequestHandler):
             self._handle_restart()
         elif self.path == "/api/open-log-dir":
             self._handle_open_log_dir()
+        elif self.path == "/api/update/apply":
+            self._handle_update_apply()
         else:
             self.send_error(404)
 
@@ -252,6 +258,29 @@ class _SettingsHandler(BaseHTTPRequestHandler):
             result = []
         self._send_json({"devices": result})
 
+    def _handle_update_check(self) -> None:
+        checker: UpdateChecker = self.server.update_checker
+        config_mgr: ConfigManager = self.server.config_manager
+        # 关开关时直接返回 has_update=False,不访问网络
+        update_cfg = config_mgr.config.get("update") or {}
+        if not update_cfg.get("check_enabled", True):
+            snap = checker.snapshot
+            snap["has_update"] = False
+            self._send_json(snap)
+            return
+        # 首次打开设置页 / 缓存为空时顺手异步触发一次
+        snap = checker.snapshot
+        if snap["checked_at"] is None and not snap["checking"]:
+            checker.trigger_async()
+            snap = checker.snapshot
+        self._send_json(snap)
+
+    def _handle_update_apply(self) -> None:
+        checker: UpdateChecker = self.server.update_checker
+        install_method = checker.snapshot["install_method"]
+        ok, output = apply_upgrade(install_method)
+        self._send_json({"ok": ok, "output": output})
+
     def _handle_restart(self) -> None:
         self._send_json({"ok": True})
 
@@ -285,14 +314,16 @@ class SettingsServer:
         self._server: HTTPServer | None = None
         self._thread: threading.Thread | None = None
         self._port: int = port
+        self._update_checker = UpdateChecker()
 
     def start(self) -> int:
         """启动服务器，返回端口号。"""
         handler = partial(_SettingsHandler)
         self._server = HTTPServer(("127.0.0.1", self._port), handler)
-        # 把 config_manager 和回调挂到 server 上供 handler 访问
+        # 把 config_manager / 回调 / update_checker 挂到 server 上供 handler 访问
         self._server.config_manager = self._config_manager
         self._server.on_config_changed = self._on_config_changed
+        self._server.update_checker = self._update_checker
 
         self._thread = threading.Thread(
             target=self._server.serve_forever,
@@ -304,6 +335,10 @@ class SettingsServer:
             port=self._port,
             message=t("server.started", port=self._port),
         )
+        # 启动时按配置异步检查一次(dev 模式 / 开关关闭自动跳过)
+        update_cfg = self._config_manager.config.get("update") or {}
+        if update_cfg.get("check_enabled", True):
+            self._update_checker.trigger_async()
         return self._port
 
     @property

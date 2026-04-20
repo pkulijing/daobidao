@@ -56,6 +56,9 @@ dependencies = [
     # torch / transformers / scipy 等推理栈全在 extras 里,不装 extras 就不会拉。
     "modelscope>=1.35.4",
     "structlog>=24.0",
+    # updater.is_newer 用 packaging.version.Version 做 PEP 440 合规版本比较;
+    # modelscope 也依赖 packaging,这里显式声明避免将来 modelscope 改了隐式依赖
+    "packaging>=23.0",
 ]
 
 [project.scripts]

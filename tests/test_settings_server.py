@@ -213,3 +213,100 @@ def test_unknown_path_404(running_server):
     host, port, _ = running_server
     status, _ = _request("GET", host, port, "/api/nonexistent")
     assert status == 404
+
+
+# --- commit 链接修复 (指向 tree/<sha> 而非 commit/<sha>) ---
+
+
+def test_commit_link_points_to_tree(monkeypatch):
+    """HTML 里 commit 链接必须是 /tree/<sha>,不能再出现 /commit/<sha>。"""
+    monkeypatch.setattr(
+        "whisper_input.settings_server.__commit__",
+        "abc1234" + "0" * 33,
+        raising=False,
+    )
+    # 注意:settings_server 里是在函数体里 import __commit__,所以要 patch
+    # 源模块而不是 ss 顶层
+    monkeypatch.setattr(
+        "whisper_input.version.__commit__",
+        "abc1234" + "0" * 33,
+    )
+    html = ss._get_settings_html()
+    assert "/tree/abc1234" in html
+    assert "/commit/abc1234" not in html
+
+
+# --- /api/update/check + /api/update/apply ---
+
+
+def test_update_check_disabled_skips_network(running_server, monkeypatch):
+    host, port, mgr = running_server
+    # 关掉开关
+    mgr.set("update.check_enabled", False)
+    mgr.save()
+
+    # 把 fetch_latest_version patch 掉,若被调用则记下来
+    calls = []
+    monkeypatch.setattr(
+        "whisper_input.updater.fetch_latest_version",
+        lambda timeout=3.0: calls.append("hit") or "9.9.9",
+    )
+
+    status, data = _request("GET", host, port, "/api/update/check")
+    assert status == 200
+    body = json.loads(data)
+    assert body["has_update"] is False
+    # 开关关了:handler 不应该触发 fetch
+    assert calls == []
+
+
+def test_update_check_enabled_returns_snapshot(running_server, monkeypatch):
+    host, port, _mgr = running_server
+    # 把 checker 换成我们可控的
+    monkeypatch.setattr(
+        "whisper_input.updater.fetch_latest_version",
+        lambda timeout=3.0: "9.9.9",
+    )
+    # server 启动时已经 trigger 过一次 async fetch;等它跑完
+    for _ in range(100):
+        status, data = _request("GET", host, port, "/api/update/check")
+        body = json.loads(data)
+        if body["checked_at"] is not None:
+            break
+        time.sleep(0.02)
+    assert status == 200
+    # has_update 取决于当前 __version__ 和 "9.9.9" 的比较,一般为 True
+    assert "install_method" in body
+    assert body["current"]
+
+
+def test_update_apply_invokes_upgrade(running_server, monkeypatch):
+    host, port, _ = running_server
+    seen = {}
+
+    def fake_apply(install_method, timeout=180.0):
+        seen["install_method"] = install_method
+        return True, "upgraded to 9.9.9"
+
+    monkeypatch.setattr(
+        "whisper_input.settings_server.apply_upgrade", fake_apply
+    )
+    status, data = _request("POST", host, port, "/api/update/apply")
+    assert status == 200
+    body = json.loads(data)
+    assert body["ok"] is True
+    assert "9.9.9" in body["output"]
+    assert "install_method" in seen
+
+
+def test_update_apply_failure_propagates_output(running_server, monkeypatch):
+    host, port, _ = running_server
+    monkeypatch.setattr(
+        "whisper_input.settings_server.apply_upgrade",
+        lambda im, timeout=180.0: (False, "pypi unreachable"),
+    )
+    status, data = _request("POST", host, port, "/api/update/apply")
+    assert status == 200
+    body = json.loads(data)
+    assert body["ok"] is False
+    assert body["output"] == "pypi unreachable"

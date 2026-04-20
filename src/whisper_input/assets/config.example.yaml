@@ -34,6 +34,10 @@ sound:
 # 设置页面端口
 settings_port: 51230
 
+# 更新检查（启动时查询 PyPI 是否有新版本）
+update:
+  check_enabled: true
+
 # 日志级别：DEBUG / INFO / WARNING / ERROR
 # 日志目录：macOS ~/Library/Logs/Whisper Input/、
 #          Linux $XDG_STATE_HOME/whisper-input/（兜底 ~/.local/state/whisper-input/）

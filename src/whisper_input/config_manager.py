@@ -50,6 +50,9 @@ DEFAULT_CONFIG = {
     "ui": {
         "language": "zh",
     },
+    "update": {
+        "check_enabled": True,
+    },
     "log_level": "INFO",
 }
 
