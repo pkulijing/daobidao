@@ -104,6 +104,29 @@
 
 ---
 
+### 启动时检测并清理已有实例
+
+**动机**：调试时遇到过上次没退出干净的僵尸进程，导致新启动的实例行为异常（热键被老进程抢走、端口被占、settings_server 起不来等）。用户手动 `ps | grep` 再 kill 太繁琐。
+
+**希望达到**：启动流程里加一个前置步骤 —— 检测是否已有 whisper-input 实例在跑，有就干掉老的，再继续启动新的。用户感知到的就是"双击启动 = 重启"。
+
+**候选方向**：
+
+- **端口探测**：`settings_server` 已经绑了一个独占端口，启动时先 `connect()` 探一下。占用 → 通过 `lsof -i :<port>` 或 `psutil.net_connections()` 拿 PID → SIGTERM → 等 1-2 秒 → SIGKILL 兜底。副作用最小，因为端口是本应用独占的
+- **PID 文件**：`~/.cache/whisper-input/whisper-input.pid`，启动时读取 + `os.kill(pid, 0)` 探活 + 校对 `psutil.Process(pid).cmdline()` 防 PID 复用误杀
+- **单实例锁**（`fcntl.flock`）：最干净的判定，但"拿不到锁后是 kill 老的还是退出"仍要自己决策，等于把问题推后
+- **健康探测 + 强制 kill 组合**：PID 存活不等于状态正常（僵尸进程的典型症状就是"进程在但热键死了"）。更稳的做法是端口探测到后，HTTP ping 一下 settings_server 的 `/health`（得先加），3 秒无响应就当僵尸处理
+
+**风险 / 注意点**：
+
+- macOS 下经 `Whisper Input.app` launcher 启动时，cmdline 和 `uv run whisper-input` 不一样，识别逻辑要同时覆盖两种
+- kill 老实例的时机要在 "绑端口 / 注册热键" 之前，否则自己会被自己的检测逻辑误伤
+- 用户在两个 shell 里手动各起一个做对比调试的场景会被打断 —— 可以加一个 `--allow-multiple` flag 兜底
+
+**scope**：中。~100 行，主要集中在 `__main__.py` 启动序列开头；外加 settings_server 可能要暴露一个 `/health` 端点。先选端口探测这条路做 MVP，够用再说。
+
+---
+
 ## 代码质量
 
 ### 测试套增强（v2）
@@ -115,6 +138,18 @@
 - **STT 多语种 / 边角样本**：v1 只测一条中文(`tests/fixtures/zh.wav`)。`iic/SenseVoiceSmall/example/` 里还有 `en.mp3` / `ja.mp3` / `ko.mp3` / `yue.mp3` 几个官方示例,可以同样转换成 wav fixture,各加一个用例覆盖更多语种 prompt id 路径。也可以试一下噪声 / 长音频 / 多说话人这些边角场景
 
 **scope**：每条都不大,小到一两个小时,大到半天。哪条优先看痛点 —— 如果某次 PR 因为没有 macOS CI 漏掉了一个 darwin-only 回归，就先做第一条；如果某次重构动到 hotkey 状态机想要更扎实的覆盖，就先做第二条。
+
+---
+
+## 杂项小修
+
+### 设置页 commit 链接指向 tree 而非 commit
+
+**现状**：[settings_server.py:86](src/whisper_input/settings_server.py#L86) 生成的链接是 `https://github.com/pkulijing/whisper-input/commit/<sha>`，点进去是那次 commit 的 diff 页。
+
+**期望**：改成 `https://github.com/pkulijing/whisper-input/tree/<sha>`，点进去是该 commit 时刻的仓库文件浏览页，对"我现在跑的代码长什么样"这个意图更直接。
+
+**scope**：一行改动，把 `/commit/` 换成 `/tree/`。顺手可做。
 
 ---
 
