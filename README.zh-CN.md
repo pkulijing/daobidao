@@ -8,7 +8,7 @@
 
 跨平台语音输入工具 —— 按住快捷键说话，松开后自动将识别结果输入到当前焦点窗口。
 
-使用达摩院官方 [SenseVoice-Small ONNX 量化版](https://www.modelscope.cn/models/iic/SenseVoiceSmall-onnx)（通过 Microsoft `onnxruntime` 直接推理），本地离线可用，支持中英日韩粤语混合识别，**自带标点 / 反向文本规范化 / 大小写**。模型首次启动从 ModelScope 国内 CDN 拉取（~231 MB），之后永久离线。
+使用阿里 Qwen 团队的 [Qwen3-ASR](https://www.modelscope.cn/models/zengshuishui/Qwen3-ASR-onnx) 作为 STT 引擎 —— encoder-decoder 结构的 LLM 式 ASR，原生支持中、英、日、韩、粤等多语种，**自带标点 / 反向文本规范化 / 大小写**。Microsoft `onnxruntime` 直接推理，首次启动从 ModelScope 国内 CDN 拉取模型后永久离线。提供两个尺寸在设置页热切换：**0.6B**(默认,~990 MB,10s 语音在 Apple Silicon 上约 1.5s)和 **1.7B**(~2.4 GB,识别最准)。
 
 支持 **Linux (X11)** 和 **macOS**。
 
@@ -41,7 +41,7 @@
 curl -LsSf https://raw.githubusercontent.com/pkulijing/whisper-input/master/install.sh | sh
 ```
 
-脚本会交互式选择语言，然后自动装好 `uv` / Python 3.12 / 系统依赖 / `whisper-input` 本身，跑 `whisper-input --init`（预下载约 231 MB 的 SenseVoice ONNX 模型，macOS 下同时安装 `~/Applications/Whisper Input.app`），最后询问是否立即启动。重复执行安全，已装好的步骤会自动跳过，`uv tool install --upgrade` 会把 `whisper-input` 升级到最新。
+脚本会交互式选择语言，然后自动装好 `uv` / Python 3.12 / 系统依赖 / `whisper-input` 本身，跑 `whisper-input --init`（预下载约 990 MB 的 Qwen3-ASR 0.6B ONNX 模型，macOS 下同时安装 `~/Applications/Whisper Input.app`），最后询问是否立即启动。重复执行安全，已装好的步骤会自动跳过，`uv tool install --upgrade` 会把 `whisper-input` 升级到最新。
 
 Linux 首次运行还会引导把当前用户加入 `input` 组（需 `sudo`，需注销重新登录后生效）。
 
@@ -58,7 +58,7 @@ brew install portaudio
 # 装工具本体（--compile-bytecode 跳过首次运行时的 .pyc 编译，启动更快）
 uv tool install --compile-bytecode whisper-input
 
-# 一次性初始化：安装 .app bundle + 下载 STT 模型（约 231 MB）
+# 一次性初始化：安装 .app bundle + 下载 STT 模型（Qwen3-ASR 0.6B,约 990 MB）
 whisper-input --init
 
 # 运行
@@ -86,7 +86,7 @@ sudo usermod -aG input $USER && newgrp input
 # 装工具本体（--compile-bytecode 跳过首次运行时的 .pyc 编译，启动更快）
 uv tool install --compile-bytecode whisper-input
 
-# 一次性初始化：下载 STT 模型（约 231 MB）
+# 一次性初始化：下载 STT 模型（Qwen3-ASR 0.6B,约 990 MB）
 whisper-input --init
 
 # 运行
@@ -104,7 +104,7 @@ whisper-input
 | `gir1.2-gtk-3.0` | 录音浮窗 | GTK 3 类型库，`pygobject` 通过它调用 GTK 绘制录音状态浮窗 |
 | `gir1.2-ayatanaappindicator3-0.1` | 系统托盘图标 | AppIndicator 类型库，Python 包 `pystray` 在 Linux 上绘制托盘图标的运行时依赖 |
 
-首次运行 `whisper-input` 会通过 `modelscope.snapshot_download` 自动从达摩院 ModelScope CDN 拉取 SenseVoice ONNX 模型（~231 MB），缓存到 `~/.cache/modelscope/hub/`。一次成功后永久离线。
+首次运行 `whisper-input` 会通过 `modelscope.snapshot_download` 自动从 ModelScope 国内 CDN 拉取 Qwen3-ASR 0.6B ONNX 模型（~990 MB），缓存到 `~/.cache/modelscope/hub/`。一次成功后永久离线。后续可在应用设置页切换到 1.7B 版本(会额外下载 ~2.4 GB)。
 
 #### 从源码安装（贡献者）
 
@@ -153,17 +153,18 @@ PyPI 分发走 GitHub Actions tag 触发 + Trusted Publishing (OIDC)：
 | 配置项 | 说明 | macOS 默认 | Linux 默认 |
 |--------|------|-----------|-----------|
 | `hotkey` | 触发快捷键 | `KEY_RIGHTMETA` | `KEY_RIGHTCTRL` |
-| `sensevoice.language` | 识别语种 | `auto` | `auto` |
-| `sensevoice.use_itn` | 反向文本规范化 | `true` | `true` |
+| `qwen3.variant` | STT 模型尺寸(`0.6B` / `1.7B`) | `0.6B` | `0.6B` |
 | `input_method` | 输入方式 | `clipboard` | `clipboard` |
 | `sound.enabled` | 录音提示音 | `true` | `true` |
+| `ui.language` | 界面语言(zh/en/fr) | `zh` | `zh` |
 
 ## 已知限制
 
 - Linux 仅支持 X11，暂不支持 Wayland
 - Super/Win 键在 GNOME 下会被桌面拦截，不建议使用
 - macOS 需要辅助功能权限才能监听全局热键
-- 首次运行需下载 SenseVoice ONNX 模型（约 231MB，从达摩院 ModelScope 官方仓库直连）
+- 首次运行需下载 Qwen3-ASR 0.6B ONNX 模型(约 990 MB,从 ModelScope 国内 CDN 直连);后续切换到 1.7B 会再拉取 ~2.4 GB
+- 当前为"按住说话-松开识别"的一次性模式(batch),实时流式识别是后续版本的路线图
 
 ## 技术架构
 
@@ -173,18 +174,20 @@ PyPI 分发走 GitHub Actions tag 触发 + Trusted Publishing (OIDC)：
 
 ```
 按住快捷键 → HotkeyListener (whisper_input.backends) → AudioRecorder (sounddevice)
-松开快捷键 → stt.SenseVoiceSTT (onnxruntime) → InputMethod → 文本输入到焦点窗口
+松开快捷键 → stt.Qwen3ASRSTT (onnxruntime) → InputMethod → 文本输入到焦点窗口
 ```
 
 平台后端（`whisper_input.backends`）运行时按 `sys.platform` 自动选择：
 - **Linux**: evdev 读键盘事件 + xclip/xdotool 剪贴板粘贴
 - **macOS**: pynput 全局键盘监听 + pbcopy/pbpaste + Cmd+V 粘贴
 
-STT 推理层（`whisper_input.stt`）：
-- 模型：达摩院官方 `iic/SenseVoiceSmall-onnx`（量化版），通过 `modelscope.snapshot_download` 从 ModelScope 国内 CDN 下载，缓存到 `~/.cache/modelscope/hub/`
-- 运行时：Microsoft 官方 `onnxruntime`，不依赖 torch
-- 特征提取、BPE 解码、meta 标签后处理：从达摩院官方 `funasr_onnx` 包移植（MIT 协议，~250 行纯 Python），和 FunASR 位对齐
-- 依赖树：`onnxruntime + kaldi-native-fbank + sentencepiece + numpy + modelscope`（modelscope base 仅 36 MB，不含 torch/transformers）
+STT 推理层（`whisper_input.stt.qwen3`）：
+- 模型：Qwen3-ASR ONNX int8,来源 ModelScope 上的 `zengshuishui/Qwen3-ASR-onnx`,通过 `modelscope.snapshot_download` 下载到 `~/.cache/modelscope/hub/`。同一仓库里并排放 0.6B / 1.7B 两个尺寸,设置页可热切换
+- 运行时：Microsoft 官方 `onnxruntime`,不依赖 torch / transformers
+- 3 阶段管线:`conv_frontend.onnx` → `encoder.int8.onnx` → `decoder.int8.onnx`(28 层 KV-cache 自回归 decoder)
+- Log-mel 特征提取:~100 行纯 numpy,和 Whisper 官方 extractor 位对齐(rtol=1e-4)
+- 分词:HuggingFace `tokenizers`(Rust byte-level BPE,~10 MB),直接加载 Qwen3-ASR 自带的 `vocab.json` + `merges.txt`,不依赖 `transformers`
+- 依赖树：`onnxruntime + tokenizers + modelscope + numpy`（modelscope base 仅 36 MB，不含 torch/transformers）
 
 共同特性：
 - 修饰键按下后有 300ms 延迟，用于区分组合键（如 Ctrl+C）和单独触发

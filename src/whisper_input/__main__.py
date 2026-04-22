@@ -2,7 +2,7 @@
 """Whisper Input - 语音输入工具
 
 按住快捷键说话，松开后自动将语音识别结果输入到当前焦点窗口。
-支持中英文混合输入，使用本地 SenseVoice 模型。
+支持中英文混合输入，使用本地 Qwen3-ASR 模型(0.6B / 1.7B 可切换)。
 
 用法:
     uv run whisper-input                 # 使用默认配置
@@ -53,7 +53,7 @@ logger = get_logger(__name__)
 
 def create_stt_engine(config: dict):
     """根据配置创建 STT 引擎。"""
-    engine = config.get("engine", "sensevoice")
+    engine = config.get("engine", "qwen3")
     engine_config = config.get(engine, {})
 
     from whisper_input.stt import create_stt
@@ -177,6 +177,14 @@ class WhisperInput:
         self._event_queue: queue.Queue = queue.Queue()
         self._worker_thread: threading.Thread | None = None
         self._worker_sentinel = object()
+
+        # STT 热切换状态(设置页面改 variant 时在后台线程换模型)
+        self._stt_switch_lock = threading.Lock()
+        self._stt_switch_state: dict = {
+            "switching": False,
+            "target_variant": None,
+            "error": None,
+        }
 
     def set_status_callback(self, callback) -> None:
         """设置状态变化回调 (status: str) -> None。"""
@@ -332,12 +340,88 @@ class WhisperInput:
             )
         if "ui.language" in changes:
             set_language(changes["ui.language"])
+        if "qwen3.variant" in changes:
+            self._switch_stt_variant(changes["qwen3.variant"])
 
     def preload_model(self) -> None:
         """预加载模型(让首次按热键时不要卡在加载)。"""
         logger.info("model_preload_start", message=t("main.preload"))
         self.stt.load()
         self._notify_status("ready")
+
+    # ------------------------------------------------------------------
+    # STT 热切换(设置页面"识别模型"下拉触发)
+    # ------------------------------------------------------------------
+
+    def stt_switch_status(self) -> dict:
+        """返回当前切换状态的浅拷贝,供 settings_server 查询。"""
+        with self._stt_switch_lock:
+            return dict(self._stt_switch_state)
+
+    def _switch_stt_variant(self, new_variant: str) -> None:
+        """在后台线程把 STT 切到新 variant,加载完成后原子替换 self.stt。
+
+        并发约束:正在切换时再次请求会被忽略(UI 层也会禁用下拉阻止)。
+        相同 variant:立刻返回,不做任何事。
+        失败:旧 self.stt 保持不变,error 字段由 UI 轮询读到后提示用户。
+        """
+        current = getattr(self.stt, "variant", None)
+        with self._stt_switch_lock:
+            if self._stt_switch_state["switching"]:
+                logger.warning(
+                    "stt_switch_already_in_progress",
+                    target=self._stt_switch_state["target_variant"],
+                )
+                return
+            if current == new_variant:
+                return
+            self._stt_switch_state.update(
+                switching=True,
+                target_variant=new_variant,
+                error=None,
+            )
+
+        logger.info(
+            "stt_switch_start",
+            from_variant=current,
+            to_variant=new_variant,
+        )
+
+        def _worker() -> None:
+            import gc
+
+            from whisper_input.stt.qwen3 import Qwen3ASRSTT
+
+            try:
+                new_stt = Qwen3ASRSTT(variant=new_variant)
+                new_stt.load()
+                old_stt = self.stt
+                self.stt = new_stt
+                del old_stt
+                gc.collect()
+                with self._stt_switch_lock:
+                    self._stt_switch_state.update(
+                        switching=False,
+                        target_variant=None,
+                        error=None,
+                    )
+                logger.info(
+                    "stt_switch_done", to_variant=new_variant
+                )
+            except Exception as exc:
+                logger.exception(
+                    "stt_switch_failed", to_variant=new_variant
+                )
+                with self._stt_switch_lock:
+                    self._stt_switch_state.update(
+                        switching=False,
+                        target_variant=None,
+                        error=str(exc),
+                    )
+
+        threading.Thread(
+            target=_worker, name="stt-switch", daemon=True
+        ).start()
 
 
 def main():
@@ -452,7 +536,7 @@ def main():
         config[HOTKEY_CONFIG_KEY] = args.hotkey
 
     hotkey = config.get(HOTKEY_CONFIG_KEY, "KEY_RIGHTCTRL")
-    engine = config.get("engine", "sensevoice")
+    engine = config.get("engine", "qwen3")
 
     logger.info(
         "startup_banner",
@@ -479,6 +563,7 @@ def main():
         config_manager=config_mgr,
         on_config_changed=wi.on_config_changed,
         port=config.get("settings_port", 51230),
+        stt_switch_status_getter=wi.stt_switch_status,
     )
     settings_server.start()
 

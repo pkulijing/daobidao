@@ -2,6 +2,13 @@
   "settings.title": "Whisper Input 设置",
   "settings.subtitle": "语音输入工具 - 按住快捷键说话，松开自动输入",
   "settings.basic": "基本设置",
+  "settings.stt_variant": "识别模型",
+  "settings.stt_variant_desc": "Qwen3-ASR 模型规模。越大越准但越慢,首次切换需下载。",
+  "settings.stt_variant_0_6b": "0.6B (快速,~1.5GB 内存)",
+  "settings.stt_variant_1_7b": "1.7B (更准,~3GB 内存)",
+  "settings.stt_switching": "模型切换中…",
+  "settings.stt_switch_done": "已切换到 {variant}",
+  "settings.stt_switch_failed": "模型切换失败",
   "settings.hotkey": "快捷键",
   "settings.hotkey_desc": "按住此键开始录音",
   "settings.advanced": "高级设置",
@@ -58,7 +65,6 @@
   "update.done_btn": "已更新",
   "update.failed": "更新失败",
   "update.hint": "更新完成后会询问是否立即重启 Whisper Input",
-
   "hotkey.KEY_RIGHTCTRL": "右 Control",
   "hotkey.KEY_LEFTCTRL": "左 Control",
   "hotkey.KEY_RIGHTALT": "右 Option",
@@ -70,14 +76,12 @@
   "hotkey.KEY_F2": "F2",
   "hotkey.KEY_F5": "F5",
   "hotkey.KEY_F12": "F12",
-
   "tray.settings": "设置...",
   "tray.quit": "退出",
   "tray.loading": "Whisper Input - 加载中...",
   "tray.ready": "Whisper Input - 就绪",
   "tray.recording": "Whisper Input - 录音中",
   "tray.processing": "Whisper Input - 识别中...",
-
   "main.banner": "Whisper Input - 语音输入",
   "main.engine": "引擎: {engine}",
   "main.hotkey": "热键: {hotkey} (按住说话，松开输入)",
@@ -100,18 +104,15 @@
   "main.exit_hint": "Ctrl+C 退出",
   "main.no_tray": "pystray/Pillow 未安装，跳过系统托盘",
   "main.processing": "识别中...",
-
   "cli.description": "Whisper Input - 语音输入工具",
   "cli.config_help": "配置文件路径",
   "cli.hotkey_help": "热键 (如 KEY_RIGHTCTRL)",
   "cli.no_tray_help": "禁用系统托盘",
   "cli.no_preload_help": "不预加载模型",
-
   "perm.accessibility": "辅助功能",
   "perm.need_grant": "缺少权限：{names}",
   "perm.waiting_for_grant": "等待授权中... 请在系统弹窗或「系统设置 > 隐私与安全性」中为 Whisper Input 打开对应开关。",
   "perm.granted_restarting": "权限已到位，重启以应用...",
-
   "hotkey.listening": "正在监听热键: {hotkey}",
   "hotkey.listen_fail": "启动键盘监听失败: {error}",
   "hotkey.accessibility_hint": "请在「系统设置 > 隐私与安全性 > 辅助功能」中",
@@ -120,33 +121,22 @@
   "hotkey.no_keyboard": "错误: 未找到键盘设备。请确保:",
   "hotkey.run_as_root": "1. 以 root 运行，或",
   "hotkey.add_input_group": "2. 将用户加入 input 组: sudo usermod -aG input $USER",
-
-  "sensevoice.preparing": "准备 SenseVoice 模型(modelscope snapshot_download)",
-  "sensevoice.loading": "加载 SenseVoice ONNX: {path}",
-  "sensevoice.loaded": "模型加载完成 (num_threads={threads})",
-
   "recorder.status": "{status}",
   "recorder.info": "录音 {duration}s, {samples} 采样, RMS={rms}",
-
   "server.started": "设置服务已启动: http://127.0.0.1:{port}",
   "server.invalid_json": "无效的 JSON",
-
   "stt.unknown_engine": "未知的 STT 引擎: {engine}",
-
   "cli.init_help": "初始化：安装 .app bundle (macOS) + 下载 STT 模型",
   "cli.uninstall_help": "清理 .app bundle、LaunchAgent、TCC 授权（之后再运行 uv tool uninstall whisper-input）",
-
   "init.start": "开始初始化 Whisper Input...",
-  "init.download_model": "下载 STT 模型（首次约 231 MB）...",
+  "init.download_model": "下载 STT 模型（首次 0.6B ~990 MB）...",
   "init.model_ready": "模型就绪",
   "init.done": "初始化完成！运行 whisper-input 即可使用。",
-
   "install.start": "开始安装 Whisper Input.app...",
   "install.launcher": "安装 launcher...",
   "install.icon": "安装图标...",
   "install.sign": "签名...",
   "install.done": "安装完成: {path}",
-
   "uninstall.removed_launchagent": "已删除 LaunchAgent: {path}",
   "uninstall.no_launchagent": "LaunchAgent 未安装，跳过",
   "uninstall.reset_tcc": "已重置 TCC 授权: {bundle_id}",

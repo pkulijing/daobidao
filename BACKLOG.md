@@ -16,13 +16,11 @@
 
 ### 中英混杂 / 专业词汇的识别后处理
 
-**动机**：SenseVoice 对通用中英文识别质量很好，但**中英混杂的专业名词 / 技术术语经常识别不出来**。对我们的用户画像（技术工作者）这是日常痛点。常见的翻车案例：
+**动机**：26 轮换了 Qwen3-ASR 之后通用识别质量跃迁,但**中英混杂的专业名词 / 冷门技术术语 / 品牌人名** 还是会翻车。典型案例（对我们的技术工作者用户画像是日常痛点）：
 
-- `kubernetes` → "苦不乐他死" / "库伯尼茨"
-- `tkinter` → "ticket"
-- `onnxruntime` → "ONNX run time" / "ONNX 轮 time"
-- `TypeScript` → "type 斯克瑞普特"
-- 人名地名不在模型词表里的全部翻车
+- 冷门开源项目名(小写、非词典词,模型只能猜音)
+- 非行业内的缩写(组织名、个人昵称、产品 codename)
+- 公司内部黑话 / 内部专有名词
 
 **希望达到**：用户能维护一个**个性化热词表**，识别阶段或后处理阶段用这个表去引导 / 纠正。硬约束：
 
@@ -32,24 +30,24 @@
 
 **候选方向**（都没深入验证过，真做时要先做技术 spike）：
 
-- **SenseVoice 原生 hot words 支持**：FunASR 文档里提到过 context biasing，要查原模型是否接受 hot words 参数 + 我们的 ONNX 量化版是否保留了这个输入。**如果支持，这是最干净的路**，只需要在 `transcribe()` 调用时多传一个参数
-- **文本后处理层基于拼音 / 编辑距离的纠错**：对 CJK + 英文混杂的场景可能不好做，拼音匹配对英文专业词效果差
-- **小型本地 LLM 兜底**：识别完交给本地 LLM（Qwen-0.5B / Phi-3-mini 这种 sub-GB 模型）做 "校正这段话的专业术语"。问题是延迟可能不可接受
-- **用户字典 → post-processing regex 替换**：最简单的版本，让用户自己写 `"苦不乐他死" → "kubernetes"` 这种规则。代价是用户要手动加每一个词，但好处是透明可控
+- **Qwen3-ASR 原生 context / hot words 支持**:Qwen3-ASR 的 chat template 里天然有一段 system prompt 可以塞进"请特别注意识别以下词汇:xxx"这种提示。这是 LLM 式 ASR 相对传统 ASR 的结构性优势。**如果 prompt 引导对 ONNX int8 量化版仍然有效,这是最干净的路**。需要做技术 spike:造几组带冷门词汇的样本,比较空 prompt vs "请注意识别以下词汇:..." prompt 的识别率
+- **文本后处理层基于拼音 / 编辑距离的纠错**:对 CJK + 英文混杂场景不好做,拼音匹配对英文词效果差
+- **用户字典 → post-processing regex 替换**:最简单版本,让用户自己写 `"苦不乐他死" → "kubernetes"` 这种规则。代价是要手动加每个词,好处是透明可控
+- **小型本地 LLM 兜底二次校正**:识别完交给 sub-GB 本地 LLM 做"校正这段话的专业术语",问题是延迟堆起来
 
 **风险**：
 
-- SenseVoice 不支持原生 hot words 的话，其他方案质量都要打折
+- Qwen3-ASR ONNX 量化版的 system prompt 引导效果需要实测验证,int8 量化可能对 prompt 敏感度有折扣
 - 用户维护词汇表的 UX 设计要想清楚（Web 设置页？还是编辑 txt 文件？用户怎么知道哪些词该加）
-- 热词表会不会随时间膨胀，影响推理速度
+- 热词列表过长时,prompt token 占比会挤压解码窗口(当前 `max_total_len=1200`)
 
-**scope**：中到大。关键看 SenseVoice 对 hot words 的支持程度。支持 → ~300 行 + 设置页加一个 textarea；不支持且决定走后处理管道 → scope 翻倍。**先花半天做 spike 确定技术路径再开轮**。
+**scope**：中。关键看 Qwen3-ASR prompt 引导的有效性。有效 → ~200 行 + 设置页加一个 textarea + 把词表拼进 system prompt;走后处理管道 → scope 翻倍。**先花半天做 spike 确定技术路径再开轮**。
 
 ---
 
-### 实时语音识别（streaming）
+### 实时语音识别（streaming）—— **第 27 轮主线**
 
-**动机**：当前是"按住热键说话 → 松开后一次性识别 → 粘贴"的 **batch** 模式。对长句子有明显延迟 —— 说完 5 秒话要等 1 秒才出文字。
+**动机**：当前是"按住热键说话 → 松开后一次性识别 → 粘贴"的 **batch** 模式。**26 轮用户实测松手后粘贴延迟 ~2 秒**(Qwen3-ASR 0.6B,10 秒左右的中文语音,Apple Silicon CPU)。拆开看延迟大头是 encoder 对 pad_or_trim 到 30s 的 mel 跑完整前向(~1 秒),decoder 30-40 步贪心 decode 只占 200-400ms。SenseVoice 时代延迟 ~500ms 不那么扎眼,但 LLM 式 ASR 的 encoder 一把梭就痛。
 
 理想状态是 streaming：
 
@@ -59,20 +57,109 @@
 
 **技术面**：
 
-- **SenseVoice-Small 原生支持 streaming 模式**，FunASR 仓库有 streaming decoder 示例代码。但我们目前用的是 ONNX 量化版 + 自己 port 的 decoder，streaming decoder 是否也能走 ONNX 需要验证
-- 改动面很大：
-  - `recorder.py` 从 "一次性读完再转 WAV" 改成 "chunk-by-chunk 流式（16kHz、320ms 窗口）"
-  - `stt/sense_voice.py` 切成 streaming decoder，可能要再 port 更多 funasr 代码
-  - `input_method.py` —— **这里是最难的地方**。当前剪贴板粘贴是 atomic 操作，一次 paste 一段。streaming 要么改成"每识别完一个完整短语就 append 一段粘贴"，要么想办法"先占位 → 识别完后原地 update"。后者在不同应用里行为各异，几乎不可能做到通用
+- **第 26 轮迁移到 Qwen3-ASR 时已经为 streaming 留了接口**:`_onnx_runner.py` 用的是绝对位置 `cache_position` + 固定大小 KV cache buffer(`max_total_len=1200`,28 层),`decoder_step(input_ids, audio_features, caches, cur_len)` 把 KV 写回原位。跨 chunk 复用 cache 不需要重新分配 —— 这是第 27 轮启动时立刻能用的基础
+- **encoder 这一段需要分块**:当前 `encode_audio(mel)` 一次吃 30s 的 mel(pad_or_trim 到 N_SAMPLES=480000)。streaming 下需要 chunk-by-chunk 喂 mel(Whisper 的典型切法是 30s 窗口 + 2s 步长滑动),或者换成 Qwen3-ASR 团队上游的流式 encoder 变体(如果有)。需要先做 spike 确认 ONNX 导出的 encoder graph 是否支持变长输入
+- 改动面：
+  - `recorder.py`:"一次性读完再转 WAV" → "chunk-by-chunk 流式(16kHz、推荐 500-1000ms 窗口)"
+  - `stt/qwen3/qwen3_asr.py` 的 `transcribe()`:拆成 `feed_chunk(pcm) -> partial_text` + `finalize() -> final_text` 两个方法,内部维护 audio buffer + 未 commit 的 token 列表
+  - `input_method.py` —— **这里是最难的地方**。当前剪贴板粘贴是 atomic 操作,一次 paste 一段。streaming 要么"每识别完一个完整短语就 append 一段粘贴",要么"先占位 → 识别完后原地 update"。后者在不同应用里行为各异,几乎不可能做到通用
 - 剪贴板语义下更合理的 streaming 是**"按短语 flush"** 而不是 "逐字 flush"
 
 **风险**：
 
-- streaming 和当前"clipboard paste"哲学冲突，UX 设计要重新想
-- SenseVoice streaming 精度是否 < batch 模式未知
-- 这是**整个应用的交互模式变更**，不是替换单个模块。规模大、耦合深
+- streaming 和当前"clipboard paste"哲学冲突,UX 设计要重新想
+- Qwen3-ASR 的流式精度 vs batch 精度未知,可能需要更长的前瞻窗口才能收敛
+- 这是**整个应用的交互模式变更**,不是替换单个模块。规模大、耦合深
 
-**scope**：大。应该是"想清楚要改交互模式再开轮"的类型，不是当做一个小优化来做。
+**scope**：大。第 27 轮的主线,应该先花半天做 encoder 分块 spike,spike 通过后再进入 PROMPT/PLAN 四步流程。
+
+---
+
+## CLI 体验
+
+### `-v` / `--version` 命令行选项
+
+**动机**:目前 `whisper-input` 命令行没有 `-v` / `--version` 选项。用户想确认"我当前装的到底是哪个版本"、"`uv tool upgrade` 跑完有没有真升上去",只能打开应用看设置页底部的版本号,或者翻 Python 包元信息(`uv run python -c "import whisper_input.version; print(whisper_input.version.__version__)"`),体验都不好。这是成熟 CLI 的标配。
+
+**希望达到**:
+
+```
+$ whisper-input --version
+whisper-input 0.7.3 (commit abc1234)
+$ whisper-input -v
+whisper-input 0.7.3 (commit abc1234)
+```
+
+- 打印完立即 `sys.exit(0)`,不走任何 STT / 托盘 / 设置页 / 模型 preload 的初始化
+- 格式参考 `uv --version` / `python --version`
+
+**候选方向**:
+
+- `__main__.py:main()` 里加一条 `parser.add_argument("-v", "--version", action="version", version=f"whisper-input {__version__} (commit {__commit__[:7]})")`
+- `__version__` / `__commit__` 已经在 `whisper_input.version` 暴露,直接拼字符串
+- dev 模式下 `__commit__` 是 `git rev-parse HEAD`,发布版下是打包时写入的 `_commit.txt`,两条路径都已经实现,不需要额外处理
+- `action="version"` 会在 argparse 内部处理 → 自动 print + exit,不需要手写 `if args.version: ...` 分支
+
+**scope**:极小。~3 行 `__main__.py` 改动 + 1 条单测(`runpy` / `subprocess` 跑 `-v` 断言输出含版本号 + 退出码 0)。半小时内能做完。优先级低但**价值高**(对用户而言每次需要确认版本的时候都省一次 surgery)。
+
+---
+
+## 设置页体验
+
+### STT 模型按需可视化下载 + 已下载状态感知
+
+**动机**:26 轮上线了"识别模型"下拉(0.6B / 1.7B)+ 热切换,但只照顾了"两个模型都已下载"的稳定态。实际用户路径有两个坑:
+
+1. **1.7B 第一次被点到时**,后台 `Qwen3ASRSTT("1.7B").load()` 会串行跑 `modelscope.snapshot_download`,在中国带宽下一次拉 ~2.4 GB,**保守估计 5-10 分钟**。设置页唯一反馈是"切换中..."的 toast —— 用户不知道"还要等多久"、"有没有在进,下"、"能不能取消",也可能误以为程序卡死把它杀掉,导致 cache 半成品,下次再 load 就爆
+2. **用户想先下模型再用**:现在没有任何入口,只能硬切一次过去等。命令行 `whisper-input --init` 只下默认的 0.6B,下不了 1.7B(`--init` 读 config 里的 `qwen3.variant`,默认 0.6B)
+
+**希望达到**:
+
+- 设置页"识别模型"区域对每个 variant 额外显示状态:**"已下载 / 未下载 / 下载中 X%"**
+- 未下载的 variant 在下拉里 **disabled**,旁边带一个"下载此模型"按钮 —— 点了才开始下(而不是选中就自动下)
+- 下载过程**可视化**:进度条 + 已下载 MB / 总 MB + 实时下行速度,可取消
+- 下载完成后按钮消失,下拉里自动 enable
+- 切换到**已下载**的 variant 时延迟只剩 session load(~4 秒),不再有网络等待
+
+**候选方向**(两端分开想):
+
+- **后端**:
+  - `_downloader.py` 加 `check_variant_downloaded(variant) -> bool`:遍历 modelscope cache 目录,看那 3 个 onnx 文件是否都存在且 size 合理(manifest 里有精确字节数,可校验)
+  - 新建 `DownloadManager` 管"进行中的下载任务",暴露 `start(variant)` / `cancel(variant)` / `status(variant) -> {state, downloaded_bytes, total_bytes, speed, error}`,内部走 daemon thread 跑 `snapshot_download` —— **关键问题**:`modelscope.snapshot_download` 是否原生吐进度回调? 没有的话就自己包装 HTTP 下载(`requests` + `stream=True` + `iter_content` + 手动算速度),skip modelscope 这层,直接命中 ModelScope HTTP URL。**先做一个 10 行 spike 验证可行性**
+  - `settings_server.py` 加两条端点:`GET /api/stt/variants` 返回每个 variant 的下载状态 snapshot、`POST /api/stt/download` 触发下载、`POST /api/stt/download/cancel` 取消
+- **前端**:
+  - 页面加载时先查 `/api/stt/variants`,根据状态装饰下拉项(`disabled` + 文字加上"(未下载)")
+  - 点"下载"按钮后进入轮询状态(复用 stt_switch_status 那套 500ms 轮询模式),渲染进度条
+  - 完成后重新查 `/api/stt/variants`,enable 下拉项 + 隐藏按钮
+
+**风险 / 注意点**:
+
+- **取消下载的文件残留**:mid-download kill 后 modelscope cache 目录会有半成品 `.onnx.incomplete` / tmp 文件。要么 cancel 时显式 `shutil.rmtree(不完整目录)`,要么依赖 modelscope 自己下次下载时识别为损坏重新拉。先查 modelscope 行为再决定
+- **并发控制**:同时允许两个 variant 一起下? 还是 serialize? 前者节省总时间但会抢带宽互相拖垮,后者用户体验更稳 —— 倾向 serialize,一次只下一个
+- **1.7B 下载过程中应用崩了**:下次启动要能识别到 cache 里的半成品并提示用户"上次下载未完成,重新下?",不然永远 stuck
+- **进度条数据来源**:如果绕开 modelscope 直接 HTTP 下载,断点续传、multi-part、镜像 failover 等功能就都自己写,是 scope 膨胀项。现实妥协:第一版**不做断点续传**,中断就从头来
+- **`--init` 命令行也该支持选 variant**:`whisper-input --init --variant 1.7B`,不阻塞这一轮但可以顺手做
+
+**scope**:中。后端 ~150 行(含 DownloadManager + 两条端点 + spike 验证) + 前端 ~80 行(状态渲染 + 进度轮询 + 按钮态切换)+ 3 份 locale 各 6-8 条新字符串。**关键前置是 modelscope 是否暴露进度回调的 spike**,半小时内能验明;如果不暴露需要绕开 modelscope 自己 HTTP 下载,scope 再翻 50%。优先级**高** —— 这是 26 轮的直接遗留,用户视角看就是"买了个坏的下拉"。
+
+### 麦克风检测改成按需启动
+
+**动机**:设置页当前一打开就持续占用麦克风做实时波形检测。macOS 菜单栏右上角因此一直亮着橙色麦克风占用指示,如果用户忘了关设置页面(很容易发生:点完保存就切 tab 走了),视感上像应用在"偷听",体验很差,也容易引发用户对隐私的误会。
+
+**希望达到**:
+
+- 设置页默认**不**打开麦克风
+- "麦克风检测"区域加一个按钮,点击后才开始检测并显示波形
+- 检测进行时按钮变成"停止检测",再点一下停掉并释放麦克风(菜单栏橙点随之消失)
+- 关闭设置页 / tab 切走时也要显式停掉(避免 JS 还在后台 hold 音频流)
+
+**候选方向**:
+
+- 前端:`getUserMedia` 的调用从 `DOMContentLoaded` 挪到按钮点击 handler;停止时遍历 `stream.getTracks()` 调 `track.stop()`,然后清空 `srcObject`。加一个 `visibilitychange` / `beforeunload` listener 兜底释放
+- 按钮状态两态切换,i18n 里加 `settings.mic_check_start` / `settings.mic_check_stop`(两个语种都要加)
+- 不需要后端改动,是纯前端 + i18n
+
+**scope**:小。`settings.html` 里 ~30 行 JS 调整 + 3 份 locale(zh/en/fr)各加 2 条。半小时级别的事。优先级高(是"让人误解在偷听"这种体验问题)。
 
 ---
 
@@ -105,13 +192,14 @@
 
 ### 测试套增强（v2）
 
-15 轮搭起了 pytest 框架（`tests/` 下 75 个用例覆盖纯逻辑层 + 带 mock 的边界层 + 端到端 STT 推理 + 默认开启的覆盖率报告 + codecov 上传 + README 徽章，总线覆盖 ~51%），但有几个明显能继续推进的方向。**先做不做都不影响项目正常运行**，列在这里是为了记住来路：
+15 轮搭起了 pytest 框架(`tests/` 下纯逻辑层 + 带 mock 的边界层 + 端到端 STT 推理 + 默认开启的覆盖率报告 + codecov 上传 + README 徽章)。26 轮跟着把 `stt/qwen3/` 全家桶写成 100% 覆盖,总线从 51% → 61%(239 个用例)。但仍有几个明显能继续推进的方向。**先做不做都不影响项目正常运行**,列在这里是为了记住来路：
 
-- **macOS CI runner 矩阵**：当前 `build.yml` 只跑 `ubuntu-24.04`。conftest 注入的 fake pynput / evdev 在真 darwin 上是否完全等价于真 pynput 还需要本地 macOS 跑一次确认。如果要彻底保险，加 `macos-latest` 进 matrix —— 代价是 macos runner 比 ubuntu 贵 10×
-- **hotkey 测试升级**：当前测试直接调 `_on_hotkey_press` 等 internal 方法,所以 `hotkey_macos.py` / `hotkey_linux.py` 卡在 54% 覆盖率(`_listen_loop` / `start` / `stop` / `find_keyboard_devices` 都没测)。更接近真实路径的做法是通过 fake `Listener` / fake evdev 设备**注入合成键盘事件**，让 `_listen_loop` / pynput callback 自然驱动状态机。改造后能把覆盖率推到 80%+
-- **STT 多语种 / 边角样本**：v1 只测一条中文(`tests/fixtures/zh.wav`)。`iic/SenseVoiceSmall/example/` 里还有 `en.mp3` / `ja.mp3` / `ko.mp3` / `yue.mp3` 几个官方示例,可以同样转换成 wav fixture,各加一个用例覆盖更多语种 prompt id 路径。也可以试一下噪声 / 长音频 / 多说话人这些边角场景
+- **`__main__.main()` 编排路径**：主入口的 CLI 解析 / 托盘启动 / preload / 信号处理这一段约 230 行目前是 0% 覆盖(整体 51%→61% 的差距全在这里)。推到 70% 的主要抓手就是这一段。难点是它耦合了托盘 / 浏览器 / 信号,需要用 `capsys` + 大量 patch 写集成式测试
+- **macOS CI runner 矩阵**：当前 `build.yml` 只跑 `ubuntu-24.04`。conftest 注入的 fake pynput / evdev 在真 darwin 上是否完全等价于真 pynput 还需要本地 macOS 跑一次确认。如果要彻底保险,加 `macos-latest` 进 matrix —— 代价是 macos runner 比 ubuntu 贵 10×
+- **hotkey 测试升级**：当前测试直接调 `_on_hotkey_press` 等 internal 方法,所以 `hotkey_macos.py` / `hotkey_linux.py` 卡在 54% 覆盖率(`_listen_loop` / `start` / `stop` / `find_keyboard_devices` 都没测)。更接近真实路径的做法是通过 fake `Listener` / fake evdev 设备**注入合成键盘事件**,让 `_listen_loop` / pynput callback 自然驱动状态机。改造后能把覆盖率推到 80%+
+- **STT 多语种 / 边角样本**：当前 `test_qwen3_asr.py` 只测一条中文(`tests/fixtures/zh.wav`)。可以录制 / 收集 en / ja / ko / yue 各一段短音频作 fixture,各加一个用例覆盖多语种解码路径 + verifyQwen3-ASR 声称的多语种能力在 ONNX int8 版本上是否掉点。也可以试一下噪声 / 长音频 / 多说话人这些边角场景
 
-**scope**：每条都不大,小到一两个小时,大到半天。哪条优先看痛点 —— 如果某次 PR 因为没有 macOS CI 漏掉了一个 darwin-only 回归，就先做第一条；如果某次重构动到 hotkey 状态机想要更扎实的覆盖，就先做第二条。
+**scope**：每条都不大,小到一两个小时,大到半天。哪条优先看痛点 —— 如果某次 PR 因为没有 macOS CI 漏掉了一个 darwin-only 回归,就先做第二条;如果想把 coverage 徽章推过 70%,就先做第一条。
 
 ---
 
@@ -139,6 +227,44 @@
 - 迁移改动面巨大，**不是一轮能做完的** —— 应该先做 POC（比如只把 settings_server 换成 aiohttp 试水），验证 GUI 共存方案可行，再全面推进
 
 **scope**：大。估计需要先花半天做 GUI + asyncio 共存的技术 spike，spike 通过后至少 2-3 轮完成完整迁移。优先级：**非阻塞但方向明确** —— 现在 threading 写法还能跑，没到性能瓶颈，但继续往上堆功能迟早要还技术债。
+
+---
+
+## 启动性能
+
+### `Qwen3ASRSTT.load()` 的细粒度日志(先做这个)
+
+**动机**:26 轮用户实测的冷启动数据(取自 `logs/whisper-input.log`):
+
+| 场景 | `qwen3_asr_loading` → `qwen3_asr_loaded` |
+|---|---|
+| 首次(含 ~940 MB 下载) | **~169 秒** |
+| cache 命中 | **~4.3 秒** |
+
+这两个阶段都只有"loading / loaded"一对事件,**中间是个黑盒**。169 秒是下载主导(已通过 cache 目录 mtime 核实),但 4.3 秒里 `modelscope.snapshot_download` 的 manifest 校验 / 3 个 ONNX session init / `_warmup()` 各占多少,没有日志依据,只能靠猜。一旦要做任何进一步优化都必须先把这个黑盒剖开。
+
+**要加的 log events**(都落在 `stt/qwen3/qwen3_asr.py::load()` 里,单 log 行足够):
+
+- `qwen3_snapshot_start` → `qwen3_snapshot_done` 包住 `download_qwen3_asr(variant)`,带 `elapsed_ms`
+- `qwen3_runner_start` → `qwen3_runner_ready` 包住 `Qwen3ONNXRunner(...)` 构造(它内部连带了 3 个 session init)
+- `qwen3_tokenizer_ready` —— tokenizer 加载快,一条结束事件足够
+- `qwen3_warmup_start` → `qwen3_warmup_done` 包住 `_warmup()`
+
+每条都带 `elapsed_ms` 字段(用 `time.perf_counter()` 两端打点)。这样一次启动 log 就能一眼看出时间花在哪,对 issue triage + 用户反馈诊断都有用。
+
+**scope**:极小。~15-20 行代码 + 单测 assert events 按顺序出现即可。不改对外行为,纯运维增强。这条**先于**任何性能优化做。
+
+### 冷启动优化(日志补完再评估)
+
+加完细粒度日志、真能看到各阶段占比之后再回来评估这些候选(现在是盲 guess):
+
+- **`snapshot_download(local_files_only=True)` 兜底**:先试 local-only,`FileNotFoundError` 再 fallback 到正常网络校验路径。省掉 cache 场景下的 manifest 校验
+- **`_warmup()` 裁剪**:只跑 encoder 不跑 decoder,前者是真延迟大头
+- **并行加载 encoder/decoder ONNX session**:`ThreadPoolExecutor` 并发构造,I/O + graph init 重叠
+- **按需 lazy load**:启动只 load conv + encoder,首次热键时再 load decoder。跟 `--no-preload` 语义重复要想清楚
+- **模型路径持久化**:variant → path 映射存 `config.yaml`,启动时绕开 `download_qwen3_asr` 调用
+
+**scope**:cache 命中 4.3 秒并不非常痛,且第 27 轮流式会进一步稀释(加载完即可听,听的同时继续初始化)。优先级**低于**日志那条。要做的时候先花 10 分钟看日志,再决定挑哪个方向。
 
 ---
 

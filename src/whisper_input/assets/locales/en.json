@@ -2,6 +2,13 @@
   "settings.title": "Whisper Input Settings",
   "settings.subtitle": "Voice input tool — hold hotkey to speak, release to type",
   "settings.basic": "Basic Settings",
+  "settings.stt_variant": "STT Model",
+  "settings.stt_variant_desc": "Qwen3-ASR model size. Larger is more accurate but slower; first switch downloads the weights.",
+  "settings.stt_variant_0_6b": "0.6B (fast, ~1.5GB RAM)",
+  "settings.stt_variant_1_7b": "1.7B (accurate, ~3GB RAM)",
+  "settings.stt_switching": "Switching model…",
+  "settings.stt_switch_done": "Switched to {variant}",
+  "settings.stt_switch_failed": "Model switch failed",
   "settings.hotkey": "Hotkey",
   "settings.hotkey_desc": "Hold this key to start recording",
   "settings.advanced": "Advanced Settings",
@@ -58,7 +65,6 @@
   "update.done_btn": "Updated",
   "update.failed": "Update failed",
   "update.hint": "You'll be asked to restart after the update finishes",
-
   "hotkey.KEY_RIGHTCTRL": "Right Control",
   "hotkey.KEY_LEFTCTRL": "Left Control",
   "hotkey.KEY_RIGHTALT": "Right Option",
@@ -70,14 +76,12 @@
   "hotkey.KEY_F2": "F2",
   "hotkey.KEY_F5": "F5",
   "hotkey.KEY_F12": "F12",
-
   "tray.settings": "Settings...",
   "tray.quit": "Quit",
   "tray.loading": "Whisper Input - Loading...",
   "tray.ready": "Whisper Input - Ready",
   "tray.recording": "Whisper Input - Recording",
   "tray.processing": "Whisper Input - Processing...",
-
   "main.banner": "Whisper Input - Voice Input",
   "main.engine": "Engine: {engine}",
   "main.hotkey": "Hotkey: {hotkey} (hold to speak, release to type)",
@@ -100,18 +104,15 @@
   "main.exit_hint": "Ctrl+C to exit",
   "main.no_tray": "pystray/Pillow not installed, skipping system tray",
   "main.processing": "Processing...",
-
   "cli.description": "Whisper Input - Voice Input Tool",
   "cli.config_help": "config file path",
   "cli.hotkey_help": "hotkey (e.g. KEY_RIGHTCTRL)",
   "cli.no_tray_help": "disable system tray",
   "cli.no_preload_help": "skip model preloading",
-
   "perm.accessibility": "Accessibility",
   "perm.need_grant": "Missing permissions: {names}",
   "perm.waiting_for_grant": "Waiting for grant... Please enable Whisper Input in the system prompt or System Settings > Privacy & Security.",
   "perm.granted_restarting": "Permissions granted, restarting to apply...",
-
   "hotkey.listening": "Listening for hotkey: {hotkey}",
   "hotkey.listen_fail": "Failed to start keyboard listener: {error}",
   "hotkey.accessibility_hint": "Please go to System Settings > Privacy & Security > Accessibility",
@@ -120,33 +121,22 @@
   "hotkey.no_keyboard": "Error: No keyboard device found. Please make sure:",
   "hotkey.run_as_root": "1. Run as root, or",
   "hotkey.add_input_group": "2. Add user to input group: sudo usermod -aG input $USER",
-
-  "sensevoice.preparing": "Preparing SenseVoice model (modelscope snapshot_download)",
-  "sensevoice.loading": "Loading SenseVoice ONNX: {path}",
-  "sensevoice.loaded": "Model loaded (num_threads={threads})",
-
   "recorder.status": "{status}",
   "recorder.info": "Recording {duration}s, {samples} samples, RMS={rms}",
-
   "server.started": "Settings server started: http://127.0.0.1:{port}",
   "server.invalid_json": "Invalid JSON",
-
   "stt.unknown_engine": "Unknown STT engine: {engine}",
-
   "cli.init_help": "Initialize: install .app bundle (macOS) + download STT model",
   "cli.uninstall_help": "Clean up .app bundle, LaunchAgent, TCC permissions (then run uv tool uninstall whisper-input)",
-
   "init.start": "Initializing Whisper Input...",
-  "init.download_model": "Downloading STT model (~231 MB on first run)...",
+  "init.download_model": "Downloading STT model (~990 MB on first run for 0.6B)...",
   "init.model_ready": "Model ready",
   "init.done": "Initialization complete! Run whisper-input to start.",
-
   "install.start": "Installing Whisper Input.app...",
   "install.launcher": "Installing launcher...",
   "install.icon": "Installing icon...",
   "install.sign": "Signing...",
   "install.done": "Installed: {path}",
-
   "uninstall.removed_launchagent": "Removed LaunchAgent: {path}",
   "uninstall.no_launchagent": "LaunchAgent not installed, skipping",
   "uninstall.reset_tcc": "Reset TCC permissions: {bundle_id}",

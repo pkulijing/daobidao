@@ -16,6 +16,7 @@ from whisper_input.config_manager import (
     DEFAULT_CONFIG,
     ConfigManager,
     _deep_merge,
+    _migrate_legacy,
 )
 
 # --- _deep_merge ---
@@ -64,14 +65,14 @@ def test_load_existing_file_merges_with_defaults(tmp_path):
     """文件里只写了部分 key,其他 key 用默认值。"""
     cfg_path = tmp_path / "config.yaml"
     cfg_path.write_text(
-        "engine: sensevoice\n"
-        "sensevoice:\n"
-        "  use_itn: false\n",
+        'engine: qwen3\n'
+        'qwen3:\n'
+        '  variant: "1.7B"\n',
         encoding="utf-8",
     )
     mgr = ConfigManager(config_path=str(cfg_path))
     # 文件里覆盖的 key
-    assert mgr.config["sensevoice"]["use_itn"] is False
+    assert mgr.config["qwen3"]["variant"] == "1.7B"
     # 文件里没写的 key 走默认
     assert mgr.config["audio"] == DEFAULT_CONFIG["audio"]
 
@@ -81,20 +82,20 @@ def test_load_existing_file_merges_with_defaults(tmp_path):
 
 def test_get_with_dot_path(tmp_path):
     mgr = ConfigManager(config_path=str(tmp_path / "config.yaml"))
-    assert mgr.get("sensevoice.use_itn") is True
+    assert mgr.get("qwen3.variant") == "0.6B"
     assert mgr.get("audio.sample_rate") == 16000
 
 
 def test_get_missing_key_returns_default(tmp_path):
     mgr = ConfigManager(config_path=str(tmp_path / "config.yaml"))
     assert mgr.get("nonexistent.key", "fallback") == "fallback"
-    assert mgr.get("sensevoice.nonexistent") is None
+    assert mgr.get("qwen3.nonexistent") is None
 
 
 def test_set_with_dot_path(tmp_path):
     mgr = ConfigManager(config_path=str(tmp_path / "config.yaml"))
-    mgr.set("sensevoice.use_itn", False)
-    assert mgr.get("sensevoice.use_itn") is False
+    mgr.set("qwen3.variant", "1.7B")
+    assert mgr.get("qwen3.variant") == "1.7B"
 
 
 def test_set_creates_intermediate_dicts(tmp_path):
@@ -109,29 +110,98 @@ def test_set_creates_intermediate_dicts(tmp_path):
 def test_save_then_reload_preserves_changes(tmp_path):
     cfg_path = tmp_path / "config.yaml"
     mgr = ConfigManager(config_path=str(cfg_path))
-    mgr.set("sensevoice.use_itn", False)
+    mgr.set("qwen3.variant", "1.7B")
     mgr.set("settings_port", 51999)
     mgr.save()
 
     # 用新实例从磁盘读回,验证持久化
     mgr2 = ConfigManager(config_path=str(cfg_path))
-    assert mgr2.get("sensevoice.use_itn") is False
+    assert mgr2.get("qwen3.variant") == "1.7B"
     assert mgr2.get("settings_port") == 51999
 
 
 def test_generated_yaml_contains_key_sections(tmp_path):
+    import copy
+
     mgr = ConfigManager(config_path=str(tmp_path / "config.yaml"))
-    yaml_text = mgr._generate_yaml(DEFAULT_CONFIG)
+    # deepcopy guards against other tests mutating DEFAULT_CONFIG via set()
+    # (pre-existing shallow-copy behavior in _deep_merge — unrelated to
+    # round 26, but makes test ordering fragile otherwise)
+    yaml_text = mgr._generate_yaml(copy.deepcopy(DEFAULT_CONFIG))
     # 关键 section 都在
-    assert "engine: sensevoice" in yaml_text
+    assert "engine: qwen3" in yaml_text
     assert "hotkey_linux:" in yaml_text
     assert "hotkey_macos:" in yaml_text
     assert "audio:" in yaml_text
-    assert "sensevoice:" in yaml_text
+    assert "qwen3:" in yaml_text
+    assert 'variant: "0.6B"' in yaml_text
     assert "sound:" in yaml_text
     assert "overlay:" in yaml_text
     assert "tray_status:" in yaml_text
     assert "settings_port:" in yaml_text
+
+
+# --- _migrate_legacy: sensevoice → qwen3 ---
+
+
+def test_migrate_legacy_sensevoice_engine_becomes_qwen3():
+    legacy = {"engine": "sensevoice", "sensevoice": {"use_itn": False}}
+    migrated, changed = _migrate_legacy(legacy)
+    assert changed is True
+    assert migrated["engine"] == "qwen3"
+    assert "sensevoice" not in migrated
+    assert migrated["qwen3"] == {"variant": "0.6B"}
+
+
+def test_migrate_legacy_modern_config_unchanged():
+    modern = {"engine": "qwen3", "qwen3": {"variant": "1.7B"}}
+    migrated, changed = _migrate_legacy(modern)
+    assert changed is False
+    assert migrated == modern
+
+
+def test_migrate_legacy_empty_input():
+    migrated, changed = _migrate_legacy({})
+    assert changed is False
+    assert migrated == {}
+
+
+def test_migrate_legacy_preserves_user_qwen3_if_already_present():
+    """罕见边界:配置同时含 sensevoice 和 qwen3。迁移应保留用户的 qwen3 块。"""
+    legacy = {
+        "engine": "sensevoice",
+        "sensevoice": {"use_itn": True},
+        "qwen3": {"variant": "1.7B"},
+    }
+    migrated, changed = _migrate_legacy(legacy)
+    assert changed is True
+    assert migrated["engine"] == "qwen3"
+    assert migrated["qwen3"] == {"variant": "1.7B"}
+    assert "sensevoice" not in migrated
+
+
+def test_migrate_legacy_non_dict_input_safe():
+    migrated, changed = _migrate_legacy(None)  # type: ignore[arg-type]
+    assert changed is False
+    assert migrated is None
+
+
+def test_load_auto_migrates_and_persists(tmp_path):
+    cfg_path = tmp_path / "config.yaml"
+    cfg_path.write_text(
+        "engine: sensevoice\nsensevoice:\n  use_itn: true\n",
+        encoding="utf-8",
+    )
+    mgr = ConfigManager(config_path=str(cfg_path))
+    # In-memory config is migrated
+    assert mgr.get("engine") == "qwen3"
+    assert mgr.get("qwen3.variant") == "0.6B"
+    assert mgr.get("sensevoice") is None
+
+    # And the migration has been persisted to disk
+    on_disk = cfg_path.read_text(encoding="utf-8")
+    assert "engine: qwen3" in on_disk
+    assert "sensevoice" not in on_disk
 
 
 # --- _resolve_path 的 dev / installed 模式 ---
@@ -186,7 +256,7 @@ def test_save_creates_parent_directory(tmp_path):
     """save 时父目录不存在应该自动创建。"""
     nested = tmp_path / "deeply" / "nested" / "config.yaml"
     mgr = ConfigManager(config_path=str(nested))
-    mgr.set("engine", "sensevoice")
+    mgr.set("engine", "qwen3")
     mgr.save()
     assert nested.is_file()
 

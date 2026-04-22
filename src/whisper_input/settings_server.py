@@ -146,6 +146,8 @@ class _SettingsHandler(BaseHTTPRequestHandler):
             self._handle_audio_devices()
         elif self.path == "/api/update/check":
             self._handle_update_check()
+        elif self.path == "/api/stt/switch_status":
+            self._handle_stt_switch_status()
         else:
             self.send_error(404)
 
@@ -279,6 +281,35 @@ class _SettingsHandler(BaseHTTPRequestHandler):
         ok, output = apply_upgrade()
         self._send_json({"ok": ok, "output": output})
 
+    def _handle_stt_switch_status(self) -> None:
+        """返回当前 STT 热切换状态。
+
+        无 getter 时默认 `{switching: False, target_variant: None, error: None}`
+        —— 这样 UI 层可以统一轮询,不用区分"支持切换的 / 不支持切换的"部署。
+        """
+        getter = getattr(self.server, "stt_switch_status_getter", None)
+        if getter is None:
+            self._send_json(
+                {
+                    "switching": False,
+                    "target_variant": None,
+                    "error": None,
+                }
+            )
+            return
+        try:
+            status = getter()
+        except Exception as exc:  # pragma: no cover - 防御
+            self._send_json(
+                {
+                    "switching": False,
+                    "target_variant": None,
+                    "error": str(exc),
+                }
+            )
+            return
+        self._send_json(status)
+
     def _handle_restart(self) -> None:
         self._send_json({"ok": True})
 
@@ -306,9 +337,11 @@ class SettingsServer:
         config_manager: ConfigManager,
         on_config_changed=None,
         port: int = 51230,
+        stt_switch_status_getter=None,
     ):
         self._config_manager = config_manager
         self._on_config_changed = on_config_changed
+        self._stt_switch_status_getter = stt_switch_status_getter
         self._server: HTTPServer | None = None
         self._thread: threading.Thread | None = None
         self._port: int = port
@@ -322,6 +355,9 @@ class SettingsServer:
         self._server.config_manager = self._config_manager
         self._server.on_config_changed = self._on_config_changed
         self._server.update_checker = self._update_checker
+        self._server.stt_switch_status_getter = (
+            self._stt_switch_status_getter
+        )
 
         self._thread = threading.Thread(
             target=self._server.serve_forever,

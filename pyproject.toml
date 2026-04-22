@@ -1,7 +1,7 @@
 [project]
 name = "whisper-input"
 version = "0.7.3"
-description = "跨平台语音输入工具 —— 按住快捷键说话,松开自动输入(SenseVoice ONNX 本地推理,支持中英日韩粤混合)"
+description = "跨平台语音输入工具 —— 按住快捷键说话,松开自动输入(Qwen3-ASR ONNX 本地推理,中英日韩粤 + 技术术语)"
 readme = "README.md"
 license = { text = "MIT" }
 authors = [
@@ -11,7 +11,7 @@ requires-python = ">=3.12.13,<3.13"
 keywords = [
     "speech-recognition",
     "voice-input",
-    "sensevoice",
+    "qwen3-asr",
     "asr",
     "stt",
     "modelscope",
@@ -48,9 +48,10 @@ dependencies = [
     # 同时提供 AppKit + Foundation 两个命名空间,并自动带上 pyobjc-core (objc)。
     "pyobjc-framework-cocoa>=10.0; sys_platform == 'darwin'",
     "onnxruntime>=1.24.4",
-    "kaldi-native-fbank>=1.22.3",
     "soundfile>=0.13.1",
-    "sentencepiece>=0.2.1",
+    # Qwen3-ASR 的 byte-level BPE 词表(vocab.json + merges.txt)直接用
+    # HuggingFace 的 Rust tokenizer(~10 MB)加载,绕开 transformers 全量包。
+    "tokenizers>=0.20",
     # 模型下载走 modelscope 官方库的 snapshot_download。base install 只拉
     # filelock / packaging / requests / tqdm / urllib3 这几个轻量依赖(~36 MB),
     # torch / transformers / scipy 等推理栈全在 extras 里,不装 extras 就不会拉。

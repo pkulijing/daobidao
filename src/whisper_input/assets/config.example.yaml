@@ -1,7 +1,7 @@
 # Whisper Input - 语音输入配置
 
 # STT 引擎
-engine: sensevoice
+engine: qwen3
 
 # 快捷键配置（按平台分别设置）
 # Linux 可选: KEY_RIGHTCTRL, KEY_LEFTCTRL, KEY_RIGHTALT, KEY_LEFTALT,
@@ -16,12 +16,13 @@ audio:
   sample_rate: 16000
   channels: 1
 
-# SenseVoice 本地模型配置
-# 首次启动通过 modelscope.snapshot_download 从达摩院 ModelScope 下载
-# SenseVoice-Small ONNX(~231 MB),缓存在 ~/.cache/modelscope/hub/,
-# 国内 CDN 秒级下完,无需代理。一次成功后永久离线。
-sensevoice:
-  use_itn: true   # 反向文本规范化(数字、日期等)
+# Qwen3-ASR 本地模型配置
+# 首次启动通过 modelscope.snapshot_download 从 ModelScope 下载,缓存在
+# ~/.cache/modelscope/hub/,国内 CDN 直连,之后永久离线。
+# variant: 0.6B (~990MB 下载 / ~1.5GB 内存,默认) 或
+#          1.7B (~2.4GB 下载 / ~3GB 内存,识别更准)
+qwen3:
+  variant: "0.6B"
 
 # 提示音（按平台分别设置路径）
 sound:

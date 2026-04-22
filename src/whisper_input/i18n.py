@@ -39,7 +39,7 @@ def t(key: str, **kwargs) -> str:
     """翻译指定 key。
 
     查找顺序：当前语言 → 中文 → key 本身。
-    支持 format 占位符：t("main.engine", engine="sensevoice")
+    支持 format 占位符：t("main.engine", engine="qwen3")
     """
     text = (
         _locales.get(_current_lang, {}).get(key)

@@ -8,7 +8,7 @@
 
 Cross-platform voice input tool — hold a hotkey, speak, release to have speech transcribed and typed into the focused window.
 
-Uses the official DAMO Academy [SenseVoice-Small ONNX quantized model](https://www.modelscope.cn/models/iic/SenseVoiceSmall-onnx) (direct inference via Microsoft `onnxruntime`), fully offline after first download. Supports Chinese, English, Japanese, Korean, and Cantonese with **built-in punctuation, inverse text normalization, and casing**. The model is downloaded from ModelScope CDN (~231 MB) on first launch, then works permanently offline.
+Uses Alibaba Qwen team's [Qwen3-ASR](https://www.modelscope.cn/models/zengshuishui/Qwen3-ASR-onnx) as the STT engine — an encoder-decoder LLM-style ASR with strong multilingual coverage (Chinese, English, Japanese, Korean, Cantonese, and more), built-in punctuation, inverse text normalization, and casing. Direct inference via Microsoft `onnxruntime`, fully offline after first download. Two variants are available via the settings page: **0.6B** (default, ~990 MB, ~1.5s for a 10s utterance on Apple Silicon) and **1.7B** (~2.4 GB, highest accuracy).
 
 Supports **Linux (X11)** and **macOS**.
 
@@ -41,7 +41,7 @@ On macOS or Linux:
 curl -LsSf https://raw.githubusercontent.com/pkulijing/whisper-input/master/install.sh | sh
 ```
 
-The script interactively picks a language (中文 / English), then installs `uv`, Python 3.12, required system libraries, and `whisper-input` itself. It runs `whisper-input --init` (pre-downloads the ~231 MB SenseVoice ONNX model; on macOS also installs `~/Applications/Whisper Input.app`) and finally asks whether to launch the app immediately. It's safe to re-run — already-installed pieces are skipped, and `uv tool install --upgrade` upgrades `whisper-input` to the latest version.
+The script interactively picks a language (中文 / English), then installs `uv`, Python 3.12, required system libraries, and `whisper-input` itself. It runs `whisper-input --init` (pre-downloads the ~990 MB Qwen3-ASR 0.6B ONNX model; on macOS also installs `~/Applications/Whisper Input.app`) and finally asks whether to launch the app immediately. It's safe to re-run — already-installed pieces are skipped, and `uv tool install --upgrade` upgrades `whisper-input` to the latest version.
 
 On Linux the script will offer to add the current user to the `input` group (requires `sudo`; takes effect after a logout/login cycle).
 
@@ -58,7 +58,7 @@ brew install portaudio
 # Install the tool (--compile-bytecode skips the first-run .pyc compile step)
 uv tool install --compile-bytecode whisper-input
 
-# One-time setup: install .app bundle + download STT model (~231 MB)
+# One-time setup: install .app bundle + download STT model (~990 MB for Qwen3-ASR 0.6B)
 whisper-input --init
 
 # Run
@@ -86,7 +86,7 @@ sudo usermod -aG input $USER && newgrp input
 # Install the tool (--compile-bytecode skips the first-run .pyc compile step)
 uv tool install --compile-bytecode whisper-input
 
-# One-time setup: download STT model (~231 MB)
+# One-time setup: download STT model (~990 MB for Qwen3-ASR 0.6B)
 whisper-input --init
 
 # Run
@@ -104,7 +104,7 @@ whisper-input
 | `gir1.2-gtk-3.0` | Recording overlay | GTK 3 typelib for the recording status overlay |
 | `gir1.2-ayatanaappindicator3-0.1` | System tray icon | AppIndicator typelib, runtime dependency of `pystray` on Linux |
 
-On first run, `whisper-input` downloads the SenseVoice ONNX model (~231 MB) via `modelscope.snapshot_download` to `~/.cache/modelscope/hub/`. After one successful download, the app is fully offline.
+On first run, `whisper-input` downloads the Qwen3-ASR ONNX model (~990 MB for the 0.6B default) via `modelscope.snapshot_download` to `~/.cache/modelscope/hub/`. After one successful download, the app is fully offline. You can switch to the 1.7B variant later from the in-app settings page (pulls an additional ~2.4 GB).
 
 #### From Source (Contributors)
 
@@ -153,7 +153,7 @@ Config file `config.yaml`, also editable via the browser settings UI:
 | Setting | Description | macOS Default | Linux Default |
 |---------|-------------|--------------|--------------|
 | `hotkey` | Trigger hotkey | `KEY_RIGHTMETA` | `KEY_RIGHTCTRL` |
-| `sensevoice.use_itn` | Inverse text normalization | `true` | `true` |
+| `qwen3.variant` | STT model size (`0.6B` / `1.7B`) | `0.6B` | `0.6B` |
 | `sound.enabled` | Recording sound notification | `true` | `true` |
 | `ui.language` | Interface language (zh/en/fr) | `zh` | `zh` |
 
@@ -162,7 +162,8 @@ Config file `config.yaml`, also editable via the browser settings UI:
 - Linux supports X11 only; Wayland is not yet supported
 - Super/Win key is intercepted by GNOME desktop, not recommended as hotkey
 - macOS requires Accessibility permission for global hotkey monitoring
-- First run downloads the SenseVoice ONNX model (~231 MB from DAMO Academy ModelScope)
+- First run downloads the Qwen3-ASR 0.6B ONNX model (~990 MB from ModelScope); switching to 1.7B later pulls another ~2.4 GB
+- Current flow is press-to-talk / release-to-transcribe (batch mode) — real-time streaming is planned for a future release
 
 ## Technical Architecture
 
@@ -170,18 +171,20 @@ The project uses src layout with all Python code under `src/whisper_input/`, ins
 
 ```
 Hold hotkey -> HotkeyListener (whisper_input.backends) -> AudioRecorder (sounddevice)
-Release     -> stt.SenseVoiceSTT (onnxruntime) -> InputMethod -> Text typed into focused window
+Release     -> stt.Qwen3ASRSTT (onnxruntime) -> InputMethod -> Text typed into focused window
 ```
 
 Platform backends (`whisper_input.backends`) auto-select at runtime via `sys.platform`:
 - **Linux**: evdev for keyboard events + xclip/xdotool clipboard paste
 - **macOS**: pynput global keyboard listener + pbcopy/pbpaste + Cmd+V paste
 
-STT inference (`whisper_input.stt`):
-- Model: DAMO Academy official `iic/SenseVoiceSmall-onnx` (quantized), downloaded via `modelscope.snapshot_download` to `~/.cache/modelscope/hub/`
-- Runtime: Microsoft official `onnxruntime`, no torch dependency
-- Feature extraction, BPE decoding, meta-tag post-processing: ported from DAMO's `funasr_onnx` (MIT license, ~250 lines pure Python), bit-aligned with FunASR
-- Dependency tree: `onnxruntime + kaldi-native-fbank + sentencepiece + numpy + modelscope` (modelscope base is only 36 MB, no torch/transformers)
+STT inference (`whisper_input.stt.qwen3`):
+- Model: Qwen3-ASR ONNX int8 from `zengshuishui/Qwen3-ASR-onnx` on ModelScope, downloaded via `modelscope.snapshot_download` to `~/.cache/modelscope/hub/`. Two variants side-by-side (0.6B / 1.7B), switchable via the settings page
+- Runtime: Microsoft official `onnxruntime`, no torch / transformers dependency
+- 3-stage pipeline: `conv_frontend.onnx` → `encoder.int8.onnx` → `decoder.int8.onnx` (28-layer KV-cache autoregressive decoder)
+- Log-mel feature extraction: ~100 lines of pure numpy, bit-aligned with Whisper's reference extractor (rtol=1e-4)
+- Tokenization: HuggingFace `tokenizers` (Rust byte-level BPE, ~10 MB) loading Qwen3-ASR's `vocab.json` + `merges.txt` directly — no `transformers` dependency
+- Dependency tree: `onnxruntime + tokenizers + modelscope + numpy` (modelscope base is only 36 MB, no torch/transformers)
 
 Common features:
 - 300ms delay on modifier key press to distinguish combos (e.g., Ctrl+C) from single triggers

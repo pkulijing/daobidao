@@ -313,14 +313,23 @@ def uninstall_cleanup() -> None:
         )
 
     # 6. 模型缓存（modelscope 新旧版本路径都检查）
+    # 同时清 Qwen3-ASR(当前)和 SenseVoiceSmall(≤0.7.3 老用户)两条线,
+    # 确保 --uninstall 不遗留历史缓存。
     model_dirs = []
-    for base in (
-        "~/.cache/modelscope/hub/models/iic",
-        "~/.cache/modelscope/hub/iic",
+    for base, org in (
+        ("~/.cache/modelscope/hub/models/zengshuishui", "zengshuishui"),
+        ("~/.cache/modelscope/hub/zengshuishui", "zengshuishui"),
+        ("~/.cache/modelscope/hub/models/iic", "iic"),
+        ("~/.cache/modelscope/hub/iic", "iic"),
     ):
-        base = os.path.expanduser(base)
-        for name in ("SenseVoiceSmall-onnx", "SenseVoiceSmall"):
-            d = os.path.join(base, name)
+        base_path = os.path.expanduser(base)
+        names = (
+            ("Qwen3-ASR-onnx",)
+            if org == "zengshuishui"
+            else ("SenseVoiceSmall-onnx", "SenseVoiceSmall")
+        )
+        for name in names:
+            d = os.path.join(base_path, name)
             if os.path.isdir(d):
                 model_dirs.append(d)
     if model_dirs:

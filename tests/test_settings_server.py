@@ -117,14 +117,14 @@ def test_post_api_config_persists(running_server):
         host,
         port,
         "/api/config",
-        body={"sensevoice.use_itn": False},
+        body={"qwen3.variant": "1.7B"},
     )
     assert status == 200
     # 内存里更新
-    assert mgr.get("sensevoice.use_itn") is False
+    assert mgr.get("qwen3.variant") == "1.7B"
     # 磁盘里也持久化了:reload 一遍
     mgr.load()
-    assert mgr.get("sensevoice.use_itn") is False
+    assert mgr.get("qwen3.variant") == "1.7B"
 
 
 def test_post_api_config_invalid_json(running_server):
@@ -149,7 +149,7 @@ def test_post_api_config_reset(running_server):
         host,
         port,
         "/api/config",
-        body={"sensevoice.use_itn": False},
+        body={"qwen3.variant": "1.7B"},
     )
     # reset
     status, _ = _request(
@@ -159,8 +159,8 @@ def test_post_api_config_reset(running_server):
     # 重新 load,值回到默认
     mgr.load()
     assert (
-        mgr.get("sensevoice.use_itn")
-        == DEFAULT_CONFIG["sensevoice"]["use_itn"]
+        mgr.get("qwen3.variant")
+        == DEFAULT_CONFIG["qwen3"]["variant"]
     )
 
 
@@ -213,6 +213,50 @@ def test_unknown_path_404(running_server):
     host, port, _ = running_server
     status, _ = _request("GET", host, port, "/api/nonexistent")
     assert status == 404
+
+
+# --- STT 热切换状态 endpoint ---
+
+
+def test_stt_switch_status_default_idle(running_server):
+    """没传 getter 时也要返回 idle 结构,UI 可以统一轮询。"""
+    host, port, _ = running_server
+    status, data = _request("GET", host, port, "/api/stt/switch_status")
+    assert status == 200
+    assert json.loads(data) == {
+        "switching": False,
+        "target_variant": None,
+        "error": None,
+    }
+
+
+def test_stt_switch_status_forwards_getter(
+    tmp_path, autostart_state, monkeypatch
+):
+    monkeypatch.setattr(ss.os, "kill", lambda *a, **kw: None)
+    monkeypatch.setattr(ss.os, "execv", lambda *a, **kw: None)
+
+    config_mgr = ConfigManager(config_path=str(tmp_path / "c.yaml"))
+    port = _free_port()
+
+    payload = {
+        "switching": True,
+        "target_variant": "1.7B",
+        "error": None,
+    }
+    server = ss.SettingsServer(
+        config_mgr,
+        port=port,
+        stt_switch_status_getter=lambda: payload,
+    )
+    server.start()
+    try:
+        _status, data = _request(
+            "GET", "127.0.0.1", port, "/api/stt/switch_status"
+        )
+        assert json.loads(data) == payload
+    finally:
+        server.stop()
 
 
 # --- commit 链接修复 (指向 tree/<sha> 而非 commit/<sha>) ---

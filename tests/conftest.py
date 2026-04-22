@@ -9,10 +9,18 @@
    全局键盘监听,污染开发者的 system
 
 用强制注入(不是 if "pynput" not in sys.modules)双向保证两边都用 fake。
+
+此外,qwen3_* 系列测试依赖 ModelScope 下载的 ONNX / tokenizer 文件,用
+session-scoped fixture 查找 cache 位置,找不到就跳过相关用例(CI 由
+actions/cache@v4 提前拉取)。
 """
 
+import os
 import sys
 import types
+from pathlib import Path
+
+import pytest
 
 
 def _install_fake_pynput() -> None:
@@ -120,3 +128,70 @@ def _install_fake_evdev() -> None:
 # 必须在任何 whisper_input.backends.hotkey_* / input_* import 之前执行
 _install_fake_pynput()
 _install_fake_evdev()
+
+
+# --------------------------------------------------------------------------
+# Qwen3-ASR model cache fixtures
+# --------------------------------------------------------------------------
+
+_MODELSCOPE_REPO = "zengshuishui/Qwen3-ASR-onnx"
+
+
+def _candidate_qwen3_roots() -> list[Path]:
+    """Return candidate paths that might hold the Qwen3-ASR cache.
+
+    Order:
+    1. ``WHISPER_INPUT_QWEN3_DIR`` env var (explicit override)
+    2. ModelScope default cache (production location)
+    3. Spike scratch dir (``/tmp/qwen3-asr-spike``, dev machine only)
+    """
+    roots: list[Path] = []
+    env = os.environ.get("WHISPER_INPUT_QWEN3_DIR")
+    if env:
+        roots.append(Path(env))
+
+    home = Path.home() / ".cache" / "modelscope" / "hub"
+    roots.extend(
+        [
+            home / "models" / _MODELSCOPE_REPO,
+            home / _MODELSCOPE_REPO,
+        ]
+    )
+    roots.append(Path("/tmp/qwen3-asr-spike"))
+    return roots
+
+
+def _find_qwen3_root() -> Path | None:
+    for root in _candidate_qwen3_roots():
+        if (
+            root.exists()
+            and (root / "tokenizer" / "vocab.json").exists()
+            and (root / "tokenizer" / "merges.txt").exists()
+        ):
+            return root
+    return None
+
+
+@pytest.fixture(scope="session")
+def qwen3_cache_root() -> Path:
+    """Root directory that contains ``tokenizer/`` and ``model_*/`` subdirs."""
+    root = _find_qwen3_root()
+    if root is None:
+        pytest.skip(
+            f"Qwen3-ASR cache not found. Run `modelscope download "
+            f"--model {_MODELSCOPE_REPO}` or set WHISPER_INPUT_QWEN3_DIR."
+        )
+    return root
+
+
+@pytest.fixture(scope="session")
+def qwen3_tokenizer_dir(qwen3_cache_root: Path) -> Path:
+    return qwen3_cache_root / "tokenizer"
+
+
+@pytest.fixture(scope="session")
+def qwen3_0_6b_model_dir(qwen3_cache_root: Path) -> Path:
+    model_dir = qwen3_cache_root / "model_0.6B"
+    if not (model_dir / "conv_frontend.onnx").exists():
+        pytest.skip(f"0.6B ONNX files not cached under {model_dir}")
+    return model_dir

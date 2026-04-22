@@ -23,7 +23,7 @@
 ##### 流式识别
 
 - 状态：进行中
-- 轮次：1
+- 轮次：1, 26
 
 #### 使用场景
 
@@ -126,6 +126,8 @@ graph TD
   subgraph e_stream["🔄 流式识别"]
     direction TB
     N1["🔬 1 · 流式识别"]:::research
+    N26["✨ 26 · Qwen3-ASR替换SenseVoice"]:::feature
+    N1 ~~~ N26
   end
 
   subgraph e_mic_check["✅ 麦克风检测"]
@@ -192,7 +194,7 @@ graph TD
 
 ## 节点索引
 
-> 最后更新：2026-04-21 | 共 25 轮
+> 最后更新：2026-04-22 | 共 26 轮
 
 | #   | 名称                      | 类型    | 所属 Epic     | 一句话描述                                                                                 |
 | --- | ------------------------- | ------- | ------------- | ------------------------------------------------------------------------------------------ |
@@ -221,3 +223,4 @@ graph TD
 | 23  | 麦克风检测                | ✨ 功能 | 麦克风检测    | 设置页集成麦克风检测，Web Audio API 实时波形 + MediaRecorder 录音回放，浏览器端纯前端实现  |
 | 24  | 退出路径CoreAudio死锁修复 | 🐛 修复 | macOS平台支持 | 主动 Pa_Terminate + unregister atexit + 超时兜底 os._exit，消除退出阶段 CoreAudio HAL 死锁 |
 | 25  | 更新检查与更新触发        | ✨ 功能 | 集成与分发    | 设置页新增 PyPI 更新检查 + 一键 `uv tool upgrade`，迭代删掉 install_method 探测简化到 85 行 |
+| 26  | Qwen3-ASR替换SenseVoice   | ✨ 功能 | 流式识别      | 从 SenseVoice 迁移到 Qwen3-ASR int8 ONNX(0.6B/1.7B 可热切换),识别质量从关键词匹配跃迁到原文零错字,为 27 轮流式识别奠基 |

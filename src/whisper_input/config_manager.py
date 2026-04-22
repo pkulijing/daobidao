@@ -1,5 +1,6 @@
 """配置管理器 - 统一管理配置文件的读取、写入和路径解析。"""
 
+import copy
 import os
 import shutil
 from importlib.resources import as_file, files
@@ -23,15 +24,15 @@ else:
 
 # 默认配置（按平台）
 DEFAULT_CONFIG = {
-    "engine": "sensevoice",
+    "engine": "qwen3",
     "hotkey_linux": "KEY_RIGHTCTRL",
     "hotkey_macos": "KEY_RIGHTMETA",  # 右 Command，MacBook 无右 Ctrl
     "audio": {
         "sample_rate": 16000,
         "channels": 1,
     },
-    "sensevoice": {
-        "use_itn": True,
+    "qwen3": {
+        "variant": "0.6B",  # "0.6B" (快) 或 "1.7B" (更准)
     },
     "sound": {
         "enabled": True,
@@ -64,8 +65,12 @@ HOTKEY_CONFIG_KEY = "hotkey_macos" if IS_MACOS else "hotkey_linux"
 
 
 def _deep_merge(base: dict, override: dict) -> dict:
-    """深度合并两个字典，override 覆盖 base。"""
-    result = base.copy()
+    """深度合并两个字典，override 覆盖 base。
+
+    Deep-copies `base` so嵌套 dict 即使没被 override 覆盖,也是独立副本;
+    后续 ConfigManager.set() 等就地修改不会污染 DEFAULT_CONFIG。
+    """
+    result = copy.deepcopy(base)
     for key, value in override.items():
         if (
             key in result
@@ -74,7 +79,7 @@ def _deep_merge(base: dict, override: dict) -> dict:
         ):
             result[key] = _deep_merge(result[key], value)
         else:
-            result[key] = value
+            result[key] = copy.deepcopy(value)
     return result
 
 
@@ -94,6 +99,34 @@ def _find_project_root() -> Path | None:
         ):
             return candidate
     return None
+
+
+def _migrate_legacy(cfg: dict) -> tuple[dict, bool]:
+    """把 ≤ 0.7.3 的 SenseVoice 配置升级到 Qwen3-ASR。
+
+    老配置字段(engine: sensevoice, sensevoice: {...})整个被替换为
+    engine: qwen3 + qwen3.variant: 0.6B。返回 (new_cfg, changed_bool),
+    changed 为 True 时调用方会把结果写回磁盘。
+    """
+    if not isinstance(cfg, dict):
+        return cfg, False
+
+    out = dict(cfg)
+    changed = False
+
+    engine = out.get("engine")
+    if engine == "sensevoice":
+        out["engine"] = "qwen3"
+        changed = True
+
+    if "sensevoice" in out:
+        out.pop("sensevoice", None)
+        changed = True
+
+    if changed and "qwen3" not in out:
+        out["qwen3"] = {"variant": "0.6B"}
+
+    return out, changed
 
 
 def _copy_example_config(dest: str) -> None:
@@ -155,7 +188,13 @@ class ConfigManager:
         else:
             file_config = {}
 
-        self._config = _deep_merge(DEFAULT_CONFIG, file_config)
+        migrated, changed = _migrate_legacy(file_config)
+        self._config = _deep_merge(DEFAULT_CONFIG, migrated)
+
+        # 自动持久化迁移结果,这样老用户无感知升级到 Qwen3-ASR
+        if changed and os.path.exists(self._path):
+            self.save()
+
         return self._config
 
     def save(self, config: dict | None = None) -> None:
@@ -171,7 +210,7 @@ class ConfigManager:
             f.write(content)
 
     def get(self, key: str, default=None):
-        """获取配置值，支持点号分隔的路径如 'sensevoice.language'。"""
+        """获取配置值，支持点号分隔的路径如 'qwen3.variant'。"""
         keys = key.split(".")
         value = self._config
         for k in keys:
@@ -197,7 +236,7 @@ class ConfigManager:
         lines = ["# Whisper Input - 语音输入配置", ""]
 
         lines.append("# STT 引擎")
-        lines.append(f"engine: {config.get('engine', 'sensevoice')}")
+        lines.append(f"engine: {config.get('engine', 'qwen3')}")
         lines.append("")
 
         lines.append("# 快捷键配置（按平台分别设置）")
@@ -234,19 +273,23 @@ class ConfigManager:
         lines.append(f"  channels: {audio.get('channels', 1)}")
         lines.append("")
 
-        lines.append("# SenseVoice 本地模型配置")
+        lines.append("# Qwen3-ASR 本地模型配置")
         lines.append(
-            "# 首次启动通过 modelscope.snapshot_download 从 ModelScope 下载 ~231MB,"
+            "# 首次启动通过 modelscope.snapshot_download 从 ModelScope 下载,"
         )
         lines.append(
             "# 缓存在 ~/.cache/modelscope/hub/,国内 CDN 直连,之后永久离线。"
         )
-        lines.append("sensevoice:")
-        sv = config.get("sensevoice", {})
-        use_itn = "true" if sv.get("use_itn", True) else "false"
         lines.append(
-            f"  use_itn: {use_itn}  # 反向文本规范化(数字、日期等)"
+            "# variant: 0.6B (~990MB 下载 / ~1.5GB 内存,默认) 或"
         )
+        lines.append(
+            "#          1.7B (~2.4GB 下载 / ~3GB 内存,识别更准)"
+        )
+        lines.append("qwen3:")
+        qw = config.get("qwen3", {})
+        variant = qw.get("variant", "0.6B")
+        lines.append(f"  variant: \"{variant}\"")
         lines.append("")
 
         lines.append("# 提示音（按平台分别设置路径）")

@@ -42,15 +42,16 @@ jobs:
       - name: Install dev deps
         run: uv sync --group dev
 
-      # tests/test_sense_voice.py 跑端到端 STT 推理,首次会通过 modelscope
-      # 拉 ~231 MB ONNX + ~377 KB BPE 到 ~/.cache/modelscope/hub。缓存这个目录
-      # 让后续 CI run 跳过下载,key 用固定 v 标记 —— 想强制刷新就 bump 版本号。
-      - name: Cache SenseVoice model
+      # tests/test_qwen3_asr.py + test_qwen3_runner.py 跑端到端 STT 推理,
+      # 首次会通过 modelscope 拉 Qwen3-ASR 0.6B(~990 MB ONNX + tokenizer)到
+      # ~/.cache/modelscope/hub。缓存这个目录让后续 CI run 跳过下载,key 用固
+      # 定 v 标记 —— 想强制刷新就 bump 版本号。
+      - name: Cache Qwen3-ASR model
         uses: actions/cache@v5
         with:
           path: ~/.cache/modelscope/hub
-          key: modelscope-sensevoice-v1
-          restore-keys: modelscope-sensevoice-
+          key: modelscope-qwen3-asr-v1
+          restore-keys: modelscope-qwen3-asr-
 
       # pyproject.toml 的 addopts 默认带 --cov-report=term,这里追加 xml 给
       # codecov 上传用。两个 report 都生成。
