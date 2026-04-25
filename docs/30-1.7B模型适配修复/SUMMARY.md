@@ -95,7 +95,7 @@ roots = [DAOBIDAO_QWEN3_DIR, ~/.cache/modelscope/hub/.../, /tmp/qwen3-asr-spike]
 
 1. **1.7B CPU 推理性能吃力**：手测确认 1.7B 转换正确、流式生效,但即使在 13700K 这种高端桌面 CPU 上,松手到出字的延迟、流式 chunk 处理速度都明显劣于 0.6B,"近实时"体感丢失。1.7B 的 ~2.4× 体量超出了 round 26 选 onnxruntime CPU-only 时舒适区的边界。已加入 BACKLOG 追踪("1.7B 模型启用 GPU 推理后端(CUDA / CoreML)")。
 2. **流式 chunk-边界 lookahead bias 在 0.6B 上仍存在**：本轮没碰流式算法，"先帝创业未百岁半"这类前缀 commit 一旦做出后无法回退。test 的 edit-distance tolerance 从 5% 放宽到 15% 容下了这个现实，但产品体验角度仍是个待优化点。
-3. **首次 CI 命中 v2 cache miss 会下载 ~3.5 GB**：cache key 从 v1 bump 到 v2 是有意触发一次冷启动，让 1.7B 真正进入 CI cache。GH runner 到 modelscope 的链路实测在国内 5-10 分钟，第一次跑会显著变慢，但只发生一次。
+3. **首次 CI 命中 v2 cache miss 时观察到 flaky**:v1.0.1 第一次 build ([run 24930204231](https://github.com/pkulijing/daobidao/actions/runs/24930204231)) fail 在 `transcribe_zh_wav` 4 个 case 上,同代码 rerun 直接 success。冷 cache + modelscope 现下 + 立即跑 ONNX 这条路径是**长期隐患**,详见 BACKLOG 的"CI 冷 cache transcribe flaky 隐患"条目。
 4. **本机 fail 的 0.6B stream-smoke 在 CI 上之前从未失败**：master 上本地一直 skip 但 CI 跑过，说明 CI 那边的字级偏差可能跟本地不同（runner 性能、ONNX 量化导出版本细微差异都可能影响 greedy decode 路径）。本轮放宽 tolerance 是基于"两侧都该过"的考虑，没有重现 CI 之前为什么过。
 
 ## 后续 TODO

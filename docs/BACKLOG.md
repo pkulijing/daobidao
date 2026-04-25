@@ -22,6 +22,7 @@
   - [启动时检测并清理已有实例](#启动时检测并清理已有实例)
 - [代码质量](#代码质量)
   - [测试套增强（v2）](#测试套增强v2)
+  - [CI 冷 cache transcribe flaky 隐患](#ci-冷-cache-transcribe-flaky-隐患)
   - [并发模型迁移到 asyncio](#并发模型迁移到-asyncio)
 - [性能](#性能)
   - [ORT optimized_model 持久化](#ort-optimized_model-持久化)
@@ -206,6 +207,45 @@
 - **STT 多语种 / 边角样本**：当前 `test_qwen3_asr.py` 只测一条中文(`tests/fixtures/zh.wav`)。可以录制 / 收集 en / ja / ko / yue 各一段短音频作 fixture,各加一个用例覆盖多语种解码路径 + verifyQwen3-ASR 声称的多语种能力在 ONNX int8 版本上是否掉点。也可以试一下噪声 / 长音频 / 多说话人这些边角场景
 
 **scope**：每条都不大,小到一两个小时,大到半天。哪条优先看痛点 —— 如果某次 PR 因为没有 macOS CI 漏掉了一个 darwin-only 回归,就先做第二条;如果想把 coverage 徽章推过 70%,就先做第一条。
+
+---
+
+### CI 冷 cache transcribe flaky 隐患
+
+**动机**:30 轮 v1.0.1 发布时观察到一次明确的 CI 不稳定 ([run 24930204231](https://github.com/pkulijing/daobidao/actions/runs/24930204231))。事件链:
+
+1. `actions/cache` key 从 `modelscope-qwen3-asr-v1` bump 到 `v2`,触发 cache miss
+2. modelscope 在 `~/.cache/modelscope/hub/` 现下 0.6B + 1.7B 共 ~3.5 GB
+3. session-scoped fixture `stt_0_6b` / `stt_1_7b` 调 `Qwen3ASRSTT.load()` → `snapshot_download` 返回路径 → `Qwen3ONNXRunner` 立即构造 ONNX session → `_warmup` 跑一次 0.5s silence 推理
+4. `test_transcribe_zh_wav[0.6B]` / `[1.7B]` + `test_streaming_via_full_whisperinput_pipeline[0.6B]` / `[1.7B]` 共 4 个 case fail
+5. 症状全是 `Qwen3ASRSTT.transcribe(zh.wav)` 返 `""` —— greedy decode 第一个 token 就被选成 EOS (151645),`generated=[]`,`raw=""`,`parse_asr_output("") == ""`
+6. 同 commit rerun → 4 个 case 全过
+
+**关键证据**:fail 那次 `test_qwen3_runner.py` 28 个 case (含 1.7B audio_feature_dim 校验 + 真音频 prefill 出非零 logits) **全过**,`test_streaming_raw_tokens_per_chunk[0.6B/1.7B]` (流式分块 prefill 路径) **全过**。挂的只有"完整 30s prompt prefill (含 ~700 个 audio_pad token) + greedy decode loop"这一条特定路径。
+
+**根因猜测**(未证实):
+- modelscope `snapshot_download` 返回路径时 ONNX 文件可能还在 OS page cache flush 中,onnxruntime `InferenceSession` 此时 mmap 读到部分零页,session 能成功构造但跨 attention 的某些权重张量是 garbage。`_warmup` 不 assert 输出有意义,所以不报错。第一次真 transcribe 时长 prompt 跨多个被污染的算子,logits 出 NaN 或全相等 → argmax 拿到 EOS。流式路径只跨少量 audio_pad,触不到污染区。
+- 也可能是 GH runner 上 onnxruntime CPU EP 的 graph optimization 在某种内存压力 / cache 状态下产生了不稳定的 op 融合;runner 单步路径不触发,长 prompt prefill 触发。
+- 都未验证。
+
+**希望达到**:CI 第一次 build (cache miss) 也稳定通过,无需 rerun。次要目标:加可观测性,下次 flaky 时能直接从 CI log 看 generated token 序列 / logits 统计 / 文件 fsync 时序,缩短 debug 路径。
+
+**候选方向**:
+
+- **预热 ONNX cache 后再开始测试**:`scripts/setup.sh` 或 workflow 里加一步,在跑 pytest 前先 `python -c "from daobidao.stt.qwen3 import Qwen3ASRSTT; Qwen3ASRSTT('0.6B').load(); Qwen3ASRSTT('1.7B').load()"` 走一遍 load + warmup,确保 ONNX session 加载稳定后再交给 pytest。代价:CI 多 ~30s,但消除 race
+- **在 download 完后 fsync + sleep**:`Qwen3ASRSTT.load()` 在 `snapshot_download` 返回后,显式 `os.sync()` 或检查所有 `.onnx` 文件能用 `mmap.mmap` 读出预期 magic header。这样 race 仍可能存在,但收紧时序窗口
+- **`transcribe()` 加 fallback retry**:第一次 transcribe 输出空时(检测到 `generated=[]` 或 raw 全 special token),重新 alloc caches + 重跑一次。如果是 transient 数值问题,第二次大概率正常。代价:线上偶发延迟翻倍,但用户感知不到 fail。**注意**:这是治标不治本,仅作 fallback
+- **CI 加诊断日志**:在 `Qwen3ASRSTT.transcribe()` / `_warmup()` 里加 logger.info dump 出 prefill logits 的 (min, max, mean, has_nan) + greedy decode 的前 5 个 next_id + 每个 ONNX 文件的 size + sha256。pytest 用 `-s` 让 logger 输出可见。下次 flaky 立刻能定位是 prefill 出 NaN 还是 token 选 EOS 还是 ONNX 文件 size 不对
+- **改用本地 self-hosted runner 永久缓存模型**:省 cache miss 路径,但运维成本高,不推荐
+
+**风险 / 注意点**:
+
+- **复现成本极高**:本地复现不了(modelscope cache 一直 warm),只在"cache miss + 现下 + 立即推理"这个三连里发生。每次 bump cache key 才有一次实验机会
+- **可能跟 onnxruntime 版本相关**:24.4 之后某次升级如果改了 graph optimization,可能消失或加剧
+- **可能跟 GH runner 硬件相关**:GH 偶尔切换 runner 池(Standard_DS2_v2 → 不同代 Intel CPU),CPU SIMD 路径变了行为也可能不一样
+- **fix-the-symptom 还是 fix-the-cause**:retry fallback 是 symptom 修法,会掩盖未来真的 transcribe 退化(把"identifying real bug"也当 flaky 重试)。倾向先做诊断日志 + 预热,确认 race 真的是文件 IO 而不是 ONNX 自身,再决定是否上 retry
+
+**scope**:中。诊断日志 ~30 行 + 预热 step 2 行 + 一份"未来 flaky 复现时的 debug 笔记"。retry fallback 单独评估,~50 行。**先观察**:这个 flaky 在 30 轮第一次发生,不要立刻修,等下次 bump cache key 再观察一次,如果再现且日志能定位根因,再开轮针对性修。如果半年内不再出现,可以从 BACKLOG 删除归到"已完成 / 不再追踪"。
 
 ---
 
