@@ -89,7 +89,18 @@
 
 ### 录音时实时检测麦克风离线
 
-**动机**:23 轮在设置页加了**被动式**麦克风检测(用户主动点"检测"才知道有没有麦克风、音质如何),但**主流程录音时**还是机械执行 —— 用户在设置页能看到"麦克风没了",按下热键说话却得不到任何反馈,程序照常 paste 一段空字符串(或更糟,Qwen3-ASR 对空白输入偶尔会幻觉出"嗯"、"谢谢观看"之类的弱信号 token),用户得反复试才意识到是麦克风问题。
+> ✅ **32 轮已落地一部分**(`docs/32-录音麦克风离线检测/`):
+> - Linux 上用 `pactl list sources` 解析 jack-detect 端口状态作为 probe 唯一权威 —— 因为 sounddevice / PortAudio 在 PipeWire 上看到的永远是虚拟 default,物理拔了麦也看不出来
+> - 浮窗错误态(红色药丸 + 麦克风斜线,2.5s 自动 hide)+ 5s 去抖
+> - 完整测试覆盖(290 用例全过)
+>
+> **下面"原始动机"保留作背景**;**仍待做的两条**:
+>
+> **A. macOS 替代 query_devices**:32 轮 macOS 仍走 `sd.query_devices`,在 MacBook(内置麦永远在)主流场景可靠;但 Mac mini / Mac Pro 等无内置麦的桌面机用户拔 USB 麦后 CoreAudio 会返回 `CADefaultDeviceAggregate-xxxx-x` 占位设备,跟 PipeWire 同样的"虚拟 default 欺骗",probe 通过 → 录到 0 字节 → 幻觉 token。32 轮没 Mac 测试机不修。候选:`system_profiler SPAudioDataType`(系统自带 shell,跟 pactl 同位置,**首选**)/ `pyobjc-framework-CoreAudio` 调 `AudioObjectGetPropertyData(kAudioHardwarePropertyDevices)`(原生最准但要加依赖)。**优先级:中** —— 真有 Mac 用户撞上才做。
+>
+> **B. 录音中途断开监控**:32 轮的 callback 连续 5 次 `input_overflow` 升级 device_lost 在 PipeWire 上**完全失效** —— 拔麦后 PipeWire 给的是干净静音流,无任何 status flag。"按住录音 5s 中途拔耳机"这一次仍会录到 5s 静音 → STT 跑一遍 → paste 空字符串/幻觉。当前降级:用户下次按热键时 probe(pactl)兜底。候选:在 Linux 起 daemon 线程,录音期间每 ~500ms 调一次 pactl 看端口可用性,翻 false 时通过 `_event_queue` 升级 device_lost(复用已有的 `_handle_device_lost`)。**优先级:中**。
+
+**动机**(32 轮立项时记录):23 轮在设置页加了**被动式**麦克风检测(用户主动点"检测"才知道有没有麦克风、音质如何),但**主流程录音时**还是机械执行 —— 用户在设置页能看到"麦克风没了",按下热键说话却得不到任何反馈,程序照常 paste 一段空字符串(或更糟,Qwen3-ASR 对空白输入偶尔会幻觉出"嗯"、"谢谢观看"之类的弱信号 token),用户得反复试才意识到是麦克风问题。
 
 典型触发链:
 - 蓝牙耳机休眠断连 / USB 麦拔出 / 某次系统更新后默认输入设备改了

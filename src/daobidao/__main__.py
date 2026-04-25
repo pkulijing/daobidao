@@ -40,6 +40,7 @@ import atexit
 import queue
 import subprocess
 import threading
+import time
 
 import numpy as np
 
@@ -48,7 +49,7 @@ from daobidao.hotkey import HotkeyListener
 from daobidao.i18n import load_locales, set_language, t
 from daobidao.input_method import type_text
 from daobidao.logger import configure_logging, get_logger
-from daobidao.recorder import AudioRecorder
+from daobidao.recorder import AudioRecorder, MicUnavailableError
 from daobidao.stt.base import (
     STREAMING_CHUNK_SAMPLES,
     StreamingKVOverflowError,
@@ -213,6 +214,18 @@ class WhisperInput:
         # 一次 session 内发生过 KV overflow 的标记,后续 chunks 跳过推理
         self._stream_overflow_hit = False
 
+        # --- 32 轮:麦克风离线检测 ---
+        # 5s 去抖:同一时段内连续 probe 失败 / device_lost 信号只弹一次
+        self._last_mic_warning_at: float = 0.0
+        self._mic_warning_cooldown_s: float = 5.0
+        # 一次 press → release 周期内,标记本次录音是否已被判离线;_do_key_release
+        # 看到这个 flag 直接早退,不走 stop / paste 路径。
+        self._mic_offline_during_recording: bool = False
+        # 让 recorder 在 PortAudio 线程检测到设备消失时把信号 enqueue 给我们
+        self.recorder.set_stream_status_callback(
+            self._on_stream_status_signal
+        )
+
     def set_status_callback(self, callback) -> None:
         """设置状态变化回调 (status: str) -> None。"""
         self._status_callback = callback
@@ -261,6 +274,18 @@ class WhisperInput:
         """热键按下的真正处理 - 开始录音。"""
         if self._processing:
             return
+
+        # 32 轮:录音前先 probe 默认输入设备。失败直接弹"麦克风离线"提示并
+        # 标记 _mic_offline_during_recording,_do_key_release 看到会早退。
+        try:
+            self.recorder.probe()
+        except MicUnavailableError as exc:
+            self._show_mic_offline_warning(exc.reason, exc.detail)
+            return
+
+        # 新一轮 session 重置离线标记
+        self._mic_offline_during_recording = False
+
         logger.info("recording_start", message=t("main.recording_start"))
         self._notify_status("recording")
         # 连接音量回调到浮窗
@@ -277,18 +302,42 @@ class WhisperInput:
                 logger.exception("stream_init_failed")
                 self._stream_state = None
                 # 回落:按离线路径录
-                self.recorder.start()
+                try:
+                    self.recorder.start()
+                except MicUnavailableError as exc:
+                    self._show_mic_offline_warning(exc.reason, exc.detail)
                 return
             self._reset_stream_accumulator()
             self._stream_total_samples = 0
             self._stream_near_limit_warned = False
             self._stream_overflow_hit = False
-            self.recorder.start_streaming(on_chunk=self._on_stream_chunk)
+            try:
+                self.recorder.start_streaming(
+                    on_chunk=self._on_stream_chunk
+                )
+            except MicUnavailableError as exc:
+                # init_stream_state 已 set 但录音没起来 → 撤掉
+                self._stream_state = None
+                self._show_mic_offline_warning(exc.reason, exc.detail)
         else:
-            self.recorder.start()
+            try:
+                self.recorder.start()
+            except MicUnavailableError as exc:
+                self._show_mic_offline_warning(exc.reason, exc.detail)
 
     def _do_key_release(self) -> None:
         """热键释放的真正处理 - 停止录音并识别。"""
+        # 32 轮:本次 session 已被判离线(probe 失败 / 中途断开),不走 paste,
+        # 同时立刻 hide 错误浮窗(否则 2.5s 兜底太长,跟正常蓝色浮窗的
+        # release → hide 行为不对齐)。
+        if self._mic_offline_during_recording:
+            self._mic_offline_during_recording = False
+            if self._overlay and self.overlay_enabled:
+                try:
+                    self._overlay.hide()
+                except Exception:
+                    logger.exception("overlay_hide_failed")
+            return
         if not self.recorder.is_recording:
             return
         logger.info("recording_stop", message=t("main.recording_stop"))
@@ -318,6 +367,86 @@ class WhisperInput:
         threading.Thread(
             target=self._process, args=(wav_data,), daemon=True
         ).start()
+
+    # ------------------------------------------------------------------
+    # 32 轮:麦克风离线检测路径
+    # ------------------------------------------------------------------
+
+    def _show_mic_offline_warning(
+        self, reason: str, detail: str | None
+    ) -> None:
+        """统一的"麦克风离线"提示入口。worker 线程里跑。
+
+        去抖只对 ``reason="device_lost"`` 生效(callback 被动触发,蓝牙抖动
+        场景下可能 1s 多次,5s 内只弹一次防刷屏)。``probe_failed`` /
+        ``stream_error`` 是用户主动按热键触发,**每次都要给反馈**——否则
+        用户按下没浮窗、没声音、跟程序卡死区分不开。
+
+        副作用:
+        - 标记 ``_mic_offline_during_recording = True``,_do_key_release 早退
+        - 浮窗调 ``show_error()``(2.5s 兜底自动 hide,松手时被 release 提前 hide)
+        """
+        # 任何一次告警都要让 release 早退
+        self._mic_offline_during_recording = True
+        if reason == "device_lost":
+            now = time.monotonic()
+            if (
+                now - self._last_mic_warning_at
+                < self._mic_warning_cooldown_s
+            ):
+                logger.debug(
+                    "mic_offline_warning_suppressed",
+                    reason=reason,
+                    detail=detail,
+                )
+                return
+            self._last_mic_warning_at = now
+        logger.warning(
+            "mic_offline", reason=reason, detail=detail
+        )
+        if self._overlay and self.overlay_enabled:
+            try:
+                msg = (
+                    t("main.mic_offline_title")
+                    + " · "
+                    + t("main.mic_offline_hint_settings")
+                )
+                self._overlay.show_error(msg)
+            except Exception:
+                logger.exception("overlay_show_error_failed")
+
+    def _on_stream_status_signal(self, status_flag: str) -> None:
+        """recorder 在 PortAudio 线程里调,只 enqueue 给 worker。lightweight。"""
+        self._event_queue.put(
+            lambda flag=status_flag: self._handle_device_lost(flag)
+        )
+
+    def _handle_device_lost(self, status_flag: str) -> None:
+        """worker 线程里跑:录音中检测到设备消失,清状态 + 弹浮窗。
+
+        即使被重复触发也无害 —— 强 stop 在 recorder 层有 is_recording 守卫,
+        warning 自身有 5s 去抖。
+        """
+        # 强行 stop 当前 stream(stop_*_with_timeout 内置 0.5s 超时兜底)
+        try:
+            if self._stream_state is not None:
+                self.recorder.stop_streaming()
+            elif self.recorder.is_recording:
+                # 累积模式:stop() 会读 _frames 拼 WAV,我们不需要那段音频,
+                # 直接调即可,返回值丢弃。
+                self.recorder.stop()
+        except Exception:
+            logger.exception("recorder_stop_after_device_lost_failed")
+        # 流式状态清理(_finalize_stream_session 也做这事,但这里走的是
+        # device_lost 短路路径,不能等 release 来 finalize)
+        self._stream_state = None
+        self._reset_stream_accumulator()
+        self._stream_total_samples = 0
+        self._stream_near_limit_warned = False
+        self._stream_overflow_hit = False
+        self._processing = False
+        # 浮窗错误态 + 日志归因
+        self._show_mic_offline_warning("device_lost", status_flag)
 
     # ------------------------------------------------------------------
     # 流式 chunk 通路

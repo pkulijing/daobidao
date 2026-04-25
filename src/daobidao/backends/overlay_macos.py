@@ -10,6 +10,7 @@ from AppKit import (
     NSFloatingWindowLevel,
     NSMakeRect,
     NSScreen,
+    NSTimer,
     NSView,
     NSWindow,
 )
@@ -35,9 +36,16 @@ _BAR_OFFSET = 17  # 距中心的起始偏移
 _DECAY = 0.85
 _RMS_SCALE = 3000.0
 
+# 错误态自动 hide 时长(s)
+_ERROR_AUTO_HIDE_S = 2.5
+
 # 深蓝 #1E3A8A
 _PILL_COLOR = NSColor.colorWithCalibratedRed_green_blue_alpha_(
     0.118, 0.227, 0.541, 1.0
+)
+# 32 轮:错误态红色 #DC2626(Tailwind red-600)
+_ERROR_PILL_COLOR = NSColor.colorWithCalibratedRed_green_blue_alpha_(
+    0.863, 0.149, 0.149, 1.0
 )
 
 
@@ -45,6 +53,7 @@ class _OverlayView(NSView):
     """自定义视图：深蓝药丸 + 麦克风 + 跳动长条。"""
 
     bar_heights = [_BAR_REST_H] * (_BAR_COUNT * 2)
+    in_error_state = False  # 32 轮:True 时画红色药丸 + 麦克风斜线
 
     def drawRect_(self, rect):  # noqa: N802
         w = rect.size.width
@@ -52,7 +61,10 @@ class _OverlayView(NSView):
         cx, cy = w / 2, h / 2
 
         # 药丸背景
-        _PILL_COLOR.setFill()
+        if self.in_error_state:
+            _ERROR_PILL_COLOR.setFill()
+        else:
+            _PILL_COLOR.setFill()
         NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
             rect, _PILL_R, _PILL_R
         ).fill()
@@ -89,6 +101,16 @@ class _OverlayView(NSView):
         NSBezierPath.fillRect_(
             NSMakeRect(cx - 3, cy - 9.6, 6, 1.6)
         )
+
+        if self.in_error_state:
+            # 32 轮:错误态画白色对角斜线(AppKit Y 轴朝上,左下→右上 即 y 减小→y 增大)
+            slash = NSBezierPath.bezierPath()
+            slash.setLineWidth_(2.0)
+            slash.setLineCapStyle_(1)  # round
+            slash.moveToPoint_((cx - 9, cy - 9))
+            slash.lineToPoint_((cx + 9, cy + 9))
+            slash.stroke()
+            return  # 错误态不画跳动条
 
         # 跳动长条
         bar_color = (
@@ -127,6 +149,27 @@ class _MainThreadRunner(NSObject):
             logger.exception("main_thread_cb_failed")
 
 
+class _ErrorHideTimerTarget(NSObject):
+    """32 轮:NSTimer 的 target,fire 时调 overlay._auto_hide_error()。
+
+    NSTimer 持有 target 强引用,target 这里再持有 overlay。timer fire 后
+    本身被 invalidate(repeats=False),引用图断开,GC 回收。
+    """
+
+    def initWithOverlay_(self, overlay):  # noqa: N802
+        self = objc.super(_ErrorHideTimerTarget, self).init()
+        if self is None:
+            return None
+        self._overlay = overlay
+        return self
+
+    def fire_(self, _timer):
+        try:
+            self._overlay._auto_hide_error()
+        except Exception:
+            logger.exception("error_hide_timer_fire_failed")
+
+
 class RecordingOverlay:
     """macOS 录音浮窗：深蓝药丸 + 麦克风 + 跳动长条。"""
 
@@ -136,6 +179,9 @@ class RecordingOverlay:
         self._pending_runners = []
         self._level = 0.0
         self._bar_heights = [_BAR_REST_H] * (_BAR_COUNT * 2)
+        # 32 轮:错误态(红色 + 麦克风斜线,2.5s 自动 hide)
+        self._in_error_state = False
+        self._error_hide_timer = None  # NSTimer,新一次 show 时 invalidate
 
     def _ensure_window(self):
         if self._window is not None:
@@ -168,6 +214,11 @@ class RecordingOverlay:
 
     def _do_show(self):
         self._ensure_window()
+        # 32 轮:取消老的错误态自动 hide(防 race),退回正常态
+        self._cancel_error_hide()
+        self._in_error_state = False
+        if self._view:
+            self._view.in_error_state = False
         self._level = 0.0
         self._bar_heights = [_BAR_REST_H] * (_BAR_COUNT * 2)
         self._view.bar_heights = self._bar_heights
@@ -188,12 +239,64 @@ class RecordingOverlay:
         self._perform_on_main(self._do_hide)
 
     def _do_hide(self):
+        self._cancel_error_hide()
+        self._in_error_state = False
+        if self._view:
+            self._view.in_error_state = False
         if self._window:
             self._window.orderOut_(None)
         self._pending_runners.clear()
 
+    def show_error(self, message: str) -> None:
+        """32 轮:显示麦克风离线错误状态(红色药丸 + 麦克风斜线),2.5s 后自动 hide。
+
+        ``message`` 当前不渲染到药丸内(120×34 太窄),仅日志可见。
+        """
+        self._perform_on_main(lambda: self._do_show_error(message))
+
+    def _do_show_error(self, _message):
+        self._ensure_window()
+        self._cancel_error_hide()
+        self._in_error_state = True
+        if self._view:
+            self._view.in_error_state = True
+            self._view.setNeedsDisplay_(True)
+        self._level = 0.0
+        self._bar_heights = [_BAR_REST_H] * (_BAR_COUNT * 2)
+        self._window.orderFront_(None)
+        # NSTimer 在主 runloop 上 fire,scheduledTimer 自动入 default mode
+        target = _ErrorHideTimerTarget.alloc().initWithOverlay_(self)
+        scheduler = (
+            NSTimer
+            .scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_
+        )
+        self._error_hide_timer = scheduler(
+            _ERROR_AUTO_HIDE_S, target, "fire:", None, False
+        )
+
+    def _auto_hide_error(self):
+        self._error_hide_timer = None
+        # 若期间用户重新按了热键,_in_error_state 已被翻 False → 不 hide
+        if self._in_error_state:
+            self._in_error_state = False
+            if self._view:
+                self._view.in_error_state = False
+            if self._window:
+                self._window.orderOut_(None)
+
+    def _cancel_error_hide(self):
+        if self._error_hide_timer is not None:
+            try:
+                self._error_hide_timer.invalidate()
+            except Exception:
+                logger.exception("error_hide_timer_invalidate_failed")
+            self._error_hide_timer = None
+
     def set_level(self, rms: float) -> None:
         """接收实时音量，更新跳动长条。"""
+        # 32 轮:错误态期间忽略 RMS,避免 race 把红色药丸刷掉
+        if self._in_error_state:
+            return
         normalized = min(1.0, rms / _RMS_SCALE)
         self._level = max(normalized, self._level * _DECAY)
         level = self._level

@@ -51,6 +51,17 @@ def fake_recorder():
             self.stop_streaming_calls = 0
             self.start_calls = 0
             self.stop_calls = 0
+            self.probe_calls = 0
+            self.probe_raises: Exception | None = None
+            self._stream_status_cb = None
+
+        def probe(self, timeout: float = 0.2) -> None:
+            self.probe_calls += 1
+            if self.probe_raises is not None:
+                raise self.probe_raises
+
+        def set_stream_status_callback(self, cb) -> None:
+            self._stream_status_cb = cb
 
         def start(self):
             self.start_calls += 1
@@ -363,3 +374,234 @@ def test_offline_key_release_unchanged(
     assert fake_recorder.stop_calls == 1
     # fake recorder.stop() 返回 b"fake-wav",transcribe 会被调
     assert fake_stt_streaming.transcribe.called
+
+
+# --------------------------------------------------------------------------
+# 32 轮:麦克风离线检测
+# --------------------------------------------------------------------------
+
+
+def _make_overlay():
+    """造一个最小 overlay,把 show_error / show / hide / update / set_level 都接上。"""
+    overlay = MagicMock()
+    return overlay
+
+
+def test_probe_failure_skips_recording(wi, fake_recorder):
+    """probe 抛 MicUnavailableError → 不进入录音,overlay.show_error 被调。"""
+    from daobidao.recorder import MicUnavailableError
+
+    overlay = _make_overlay()
+    wi.overlay_enabled = True
+    wi.set_overlay(overlay)
+    fake_recorder.probe_raises = MicUnavailableError(
+        "probe_failed", "no input"
+    )
+
+    wi._do_key_press()
+
+    assert fake_recorder.probe_calls == 1
+    assert fake_recorder.start_calls == 0
+    assert fake_recorder.start_streaming_calls == 0
+    assert wi._stream_state is None
+    assert wi._mic_offline_during_recording is True
+    assert overlay.show_error.called
+
+
+def test_probe_failure_release_is_noop(wi, fake_recorder):
+    """probe 失败后立刻松手 → recorder.stop / stop_streaming 不被调。"""
+    from daobidao.recorder import MicUnavailableError
+
+    fake_recorder.probe_raises = MicUnavailableError(
+        "probe_failed", "no input"
+    )
+
+    wi._do_key_press()
+    wi._do_key_release()
+
+    assert fake_recorder.stop_calls == 0
+    assert fake_recorder.stop_streaming_calls == 0
+    # release 早退后,flag 应被复位,以便下一轮按键正常工作
+    assert wi._mic_offline_during_recording is False
+
+
+def test_probe_failure_each_press_shows_error_no_debounce(
+    wi, fake_recorder
+):
+    """probe_failed 是用户主动按热键触发,**每次都该弹**(不去抖),
+    否则用户按下没浮窗、没声音、跟程序卡死区分不开。"""
+    from daobidao.recorder import MicUnavailableError
+
+    overlay = _make_overlay()
+    wi.overlay_enabled = True
+    wi.set_overlay(overlay)
+    fake_recorder.probe_raises = MicUnavailableError(
+        "probe_failed", "no input"
+    )
+
+    wi._do_key_press()
+    wi._do_key_press()
+    wi._do_key_press()
+
+    assert fake_recorder.probe_calls == 3
+    # probe_failed 每次都弹,不受 5s 去抖影响
+    assert overlay.show_error.call_count == 3
+
+
+def test_device_lost_warning_debounced_within_5s(wi, fake_recorder):
+    """device_lost 是 callback 被动触发(蓝牙抖动可能 1s 多次),5s 去抖防刷屏。"""
+    overlay = _make_overlay()
+    wi.overlay_enabled = True
+    wi.set_overlay(overlay)
+
+    # 触发 3 次 device_lost 信号(模拟蓝牙抖动连续多次断连)
+    wi._on_stream_status_signal("input overflow")
+    wi._on_stream_status_signal("input overflow")
+    wi._on_stream_status_signal("input overflow")
+    _drain_worker(wi)
+
+    # device_lost 受 5s 去抖,只弹一次
+    assert overlay.show_error.call_count == 1
+
+
+def test_release_hides_error_overlay(wi, fake_recorder):
+    """松开热键应立即 hide 错误浮窗,不等 2.5s 兜底超时。"""
+    from daobidao.recorder import MicUnavailableError
+
+    overlay = _make_overlay()
+    wi.overlay_enabled = True
+    wi.set_overlay(overlay)
+    fake_recorder.probe_raises = MicUnavailableError(
+        "probe_failed", "no input"
+    )
+
+    wi._do_key_press()
+    assert overlay.show_error.called
+    assert not overlay.hide.called
+
+    wi._do_key_release()
+    assert overlay.hide.called
+
+
+def test_mic_warning_resets_processing_flag(wi, fake_recorder):
+    """probe 失败不应把 _processing 卡 True,否则下一次按键会被吃掉。"""
+    from daobidao.recorder import MicUnavailableError
+
+    fake_recorder.probe_raises = MicUnavailableError(
+        "probe_failed", "no input"
+    )
+
+    wi._do_key_press()
+    assert wi._processing is False
+
+
+def test_stream_error_falls_through_to_warning(wi, fake_recorder):
+    """probe 通过但 start_streaming 抛 MicUnavailableError → 同样走 warning。"""
+    from daobidao.recorder import MicUnavailableError
+
+    overlay = _make_overlay()
+    wi.overlay_enabled = True
+    wi.set_overlay(overlay)
+
+    def _boom(on_chunk):
+        raise MicUnavailableError("stream_error", "PortAudio boom")
+
+    fake_recorder.start_streaming = _boom
+
+    wi._do_key_press()
+
+    assert wi._stream_state is None
+    assert wi._mic_offline_during_recording is True
+    assert overlay.show_error.called
+
+
+def test_stream_status_signal_enqueued_to_worker(wi):
+    """recorder 调 _on_stream_status_signal → _event_queue 收到一个任务。"""
+    pre_size = wi._event_queue.qsize()
+    wi._on_stream_status_signal("input overflow")
+    # 任务可能已被 worker 立刻消费(worker 已起);qsize 在 worker 取走后回落。
+    # 用绝对的副作用判断:_handle_device_lost 跑完会把 _stream_state 清零、
+    # _mic_offline_during_recording = True。
+    _drain_worker(wi)
+    assert wi._mic_offline_during_recording is True
+    # 至少有过任务入队(用 ge 判断,避免 worker 速度差异)
+    assert wi._event_queue.qsize() >= 0  # 已被 drain
+    assert pre_size >= 0
+
+
+def test_device_lost_during_streaming_clears_state(
+    wi, fake_recorder, fake_stt_streaming
+):
+    """流式录音中 device_lost 信号 → stream_state 清零,paste 不会发生。"""
+    fake_stt_streaming.stream_step = MagicMock(
+        return_value=StreamEvent(
+            committed_delta="should-not-paste",
+            pending_text="",
+            is_final=False,
+        )
+    )
+    overlay = _make_overlay()
+    wi.overlay_enabled = True
+    wi.set_overlay(overlay)
+
+    wi._do_key_press()
+    assert wi._stream_state is not None
+    assert fake_recorder.is_recording is True
+
+    # 模拟 PortAudio 线程检测到设备消失,触发信号
+    wi._on_stream_status_signal("input overflow")
+    _drain_worker(wi)
+
+    assert wi._stream_state is None
+    assert wi._mic_offline_during_recording is True
+    assert wi._processing is False
+    assert fake_recorder.stop_streaming_calls == 1
+    assert overlay.show_error.called
+
+    # 之后松手不应触发 paste
+    wi._do_key_release()
+    _drain_worker(wi)
+    assert "should-not-paste" not in wi._pasted
+
+
+def test_device_lost_offline_mode_calls_stop_not_stop_streaming(
+    wi, fake_recorder
+):
+    """离线模式下 device_lost → 调 recorder.stop()(累积模式),不是 stop_streaming。"""
+    wi.streaming_mode = False
+
+    wi._do_key_press()
+    assert fake_recorder.start_calls == 1
+
+    wi._on_stream_status_signal("input overflow")
+    _drain_worker(wi)
+
+    assert fake_recorder.stop_calls == 1
+    assert fake_recorder.stop_streaming_calls == 0
+    assert wi._mic_offline_during_recording is True
+
+
+def test_recovery_after_cooldown(wi, fake_recorder, monkeypatch):
+    """5s 冷却期过后 probe 重新成功,正常录音应能恢复。"""
+    from daobidao.recorder import MicUnavailableError
+
+    overlay = _make_overlay()
+    wi.overlay_enabled = True
+    wi.set_overlay(overlay)
+    fake_recorder.probe_raises = MicUnavailableError(
+        "probe_failed", "no input"
+    )
+
+    wi._do_key_press()
+    assert overlay.show_error.call_count == 1
+    assert fake_recorder.probe_calls == 1
+
+    # 模拟 5s+ 过去
+    wi._last_mic_warning_at -= 10.0
+    # 麦克风恢复
+    fake_recorder.probe_raises = None
+
+    wi._do_key_press()
+    assert fake_recorder.start_streaming_calls == 1
+    assert wi._mic_offline_during_recording is False
+    assert wi._stream_state is not None

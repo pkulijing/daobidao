@@ -84,6 +84,8 @@ graph TD
   subgraph e_mic_check["✅ 麦克风检测"]
     direction TB
     N23["✨ 23 · 麦克风检测"]:::feature
+    N32["✨ 32 · 录音麦克风离线检测"]:::feature
+    N23 ~~~ N32
   end
 
   subgraph e_remote["❌ 远程桌面"]
@@ -159,7 +161,7 @@ graph TD
 
 ## 节点索引
 
-> 最后更新：2026-04-25 | 共 31 轮
+> 最后更新：2026-04-25 | 共 32 轮
 
 | #   | 名称                      | 类型    | 所属 Epic     | 一句话描述                                                                                 |
 | --- | ------------------------- | ------- | ------------- | ------------------------------------------------------------------------------------------ |
@@ -194,6 +196,7 @@ graph TD
 | 29  | 改名为daobidao             | 📦 工程 | 集成与分发    | 项目从 whisper-input 改名为 daobidao（叨逼叨），发布 v1.0.0；老包变成转发 shim；macOS/Linux 启动时一次性迁移历史配置/日志/.app/LaunchAgent |
 | 30  | 1.7B 模型适配修复           | 🐛 修复 | 流式识别      | 修复流式 init 写死 0.6B encoder dim=1024 导致 1.7B 不可用的根因，让 ONNX runner 暴露 audio_feature_dim；同时删 _downloader 抽象、conftest 改用 STT.cache_root 反推路径，38 个 qwen3 单测从 skip 转为参数化覆盖两份模型 |
 | 31  | 启动时清理已有实例          | ✨ 功能 | 单实例管理    | 启动序列加单实例守门：socket 探 settings_port → HTTP `GET /api/pid` 验证身份 → SIGTERM/SIGKILL 升级链；HTTP 协议握手避免误杀别人占了 51230 的进程，无新依赖；`--allow-multiple` flag 给开发者多实例调试场景兜底 |
+| 32  | 录音麦克风离线检测           | ✨ 功能 | 麦克风检测    | 主流程录音前用 `pactl list sources` 解析 PipeWire jack-detect 端口状态做麦克风可用性 probe（替代被 PipeWire 静音流欺骗的 sounddevice probe），离线时弹红色斜线浮窗 + 不录不 paste；macOS 仍走 query_devices 主流场景可靠，Mac mini 边角与 Linux 中途断开监控留 follow-up |
 
 ---
 
@@ -227,7 +230,7 @@ graph TD
 ##### 麦克风检测
 
 - 状态: 已完成
-- 轮次：23
+- 轮次：23, 32
 
 ##### 远程桌面
 
