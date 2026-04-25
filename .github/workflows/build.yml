@@ -4,7 +4,7 @@ name: Build
 # 实际发版由 .github/workflows/release.yml 在 tag 推送时触发。
 on:
   push:
-    branches: [master, refactor/**, fix/**, feat/**]
+    branches: [master, refactor/**, fix/**, feat/**, experiment/**]
   pull_request:
   workflow_dispatch:
 
