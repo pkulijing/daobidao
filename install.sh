@@ -287,6 +287,17 @@ run_init() {
     daobidao --init
 }
 
+# ---------- 启动辅助：macOS exec，Linux 后台 ----------
+_launch_daobidao() {
+    if [ "$PLATFORM" = "macos" ]; then
+        # macOS: daobidao 会 open -a .app 然后自行退出，exec 即可
+        exec daobidao
+    else
+        # Linux: daobidao 是前台阻塞进程，放后台让安装脚本退出
+        nohup daobidao >/dev/null 2>&1 &
+    fi
+}
+
 # ---------- 最后：问是否启动 ----------
 maybe_launch() {
     printf '\n'
@@ -296,14 +307,14 @@ maybe_launch() {
     if [ "$INPUT_GROUP_JUST_ADDED" -eq 1 ]; then
         # 新加入 input 组的会话启动会权限失败，默认 N
         if prompt_yesno "$(msg_launch_relogin_warning)" n; then
-            exec daobidao
+            _launch_daobidao
         else
             printf '%s\n' "$(msg_not_launched_hint)"
             return
         fi
     fi
     if prompt_yesno "$(msg_launch_prompt)" y; then
-        exec daobidao
+        _launch_daobidao
     else
         printf '%s\n' "$(msg_not_launched_hint)"
     fi
