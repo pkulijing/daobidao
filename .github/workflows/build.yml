@@ -42,6 +42,45 @@ jobs:
       - name: Install dev deps
         run: uv sync --group dev
 
+      # round 33: dump runner 硬件 + 内核 + ORT 配置指纹,帮诊断 CI 偶发翻车
+      # (4 个 STT 端到端测试在不同 runner 上结果不一,推测 runner 池 SKU 漂移)。
+      # 多攒几次失败/成功的 fingerprint,对比 CPU model / SIMD flags / kernel /
+      # ORT EP / 线程设置,看到底是哪个维度抽签。失败 fingerprint 来自当时 CI log,
+      # 成功 fingerprint 等 DAOBIDAO_SKIP_E2E_STT 把测试稳过几轮后,临时去掉 skip
+      # 跑一次拿。
+      - name: Runner fingerprint
+        run: |
+          echo "=== uname ==="
+          uname -a
+          echo
+          echo "=== /etc/os-release ==="
+          cat /etc/os-release
+          echo
+          echo "=== lscpu ==="
+          lscpu
+          echo
+          echo "=== /proc/cpuinfo SIMD flags (uniq) ==="
+          grep -m1 ^flags /proc/cpuinfo | tr ' ' '\n' \
+            | grep -E '^(sse|avx|vnni|amx|f16c)' | sort -u
+          echo
+          echo "=== mem ==="
+          free -h
+          echo
+          echo "=== ORT fingerprint ==="
+          uv run python - <<'PY'
+          import os
+          import onnxruntime as ort
+          so = ort.SessionOptions()
+          print("ort.__version__         :", ort.__version__)
+          print("get_available_providers :", ort.get_available_providers())
+          print("intra_op_num_threads    :", so.intra_op_num_threads)
+          print("inter_op_num_threads    :", so.inter_op_num_threads)
+          print("graph_optimization_level:", so.graph_optimization_level)
+          print("execution_mode          :", so.execution_mode)
+          print("OMP_NUM_THREADS env     :", os.environ.get("OMP_NUM_THREADS"))
+          print("MKL_NUM_THREADS env     :", os.environ.get("MKL_NUM_THREADS"))
+          PY
+
       # tests/test_qwen3_asr.py + test_qwen3_runner.py + test_qwen3_stream_smoke.py
       # 跑端到端 STT 推理,首次会通过 modelscope 拉 Qwen3-ASR 0.6B(~990 MB)+ 1.7B
       # (~2.4 GB)到 ~/.cache/modelscope/hub,共 ~3.5 GB。缓存这个目录让后续 CI run
