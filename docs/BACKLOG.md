@@ -15,8 +15,9 @@
 - [识别能力](#识别能力)
   - [中英混杂 / 专业词汇的识别后处理](#中英混杂--专业词汇的识别后处理)
   - [流式识别长音频滑动窗口](#流式识别长音频滑动窗口)
+- [UI/UX 体验](#uiux-体验)
+  - [录音时实时检测麦克风离线](#录音时实时检测麦克风离线)
   - [流式 preview 浮窗显示 pending](#流式-preview-浮窗显示-pending)
-- [设置页体验](#设置页体验)
   - [STT 模型按需可视化下载 + 已下载状态感知](#stt-模型按需可视化下载--已下载状态感知)
 - [代码质量](#代码质量)
   - [测试套增强（v2）](#测试套增强v2)
@@ -84,6 +85,49 @@
 
 ---
 
+## UI/UX 体验
+
+### 录音时实时检测麦克风离线
+
+**动机**:23 轮在设置页加了**被动式**麦克风检测(用户主动点"检测"才知道有没有麦克风、音质如何),但**主流程录音时**还是机械执行 —— 用户在设置页能看到"麦克风没了",按下热键说话却得不到任何反馈,程序照常 paste 一段空字符串(或更糟,Qwen3-ASR 对空白输入偶尔会幻觉出"嗯"、"谢谢观看"之类的弱信号 token),用户得反复试才意识到是麦克风问题。
+
+典型触发链:
+- 蓝牙耳机休眠断连 / USB 麦拔出 / 某次系统更新后默认输入设备改了
+- macOS 切换到外接显示器时音频路由 reset
+- Linux PipeWire / PulseAudio 重启后 device index 变化
+
+**希望达到**:
+
+- **录音开始前**(按下热键瞬间):快速校验当前默认输入设备还在 → 不在则**不进入录音状态**,浮窗或托盘 / 通知里提示"麦克风离线",松开热键不 paste
+- **录音过程中**:如果设备中途断开(`sounddevice` 会抛 `PortAudioError` 或回调 status 带 input overflow / device unavailable 标志),**立即终止录音**并以同样方式提示用户,不让 paste 继续走
+- 提示文案做成可关闭/不打扰(连续断开时不刷屏)
+- **不引入新的运行时依赖** —— `sounddevice` 已经够用
+
+**候选方向**(都没深入验证,真做时按需 spike):
+
+- **录音前快速 probe**:`AudioRecorder.start_recording()` 进 `sd.InputStream` 之前先调一次 `sd.query_devices(kind="input")` 或 `sd.default.device`,拿不到 / index 为 -1 → 直接抛 `MicUnavailableError`,`WhisperInput` 捕获后走"提示但不录音"路径。**最简版,单次开销 < 1ms**
+- **InputStream 回调 status 监听**:`sd.InputStream(callback=...)` 的 callback 第三个参数是 `CallbackFlags`,设备消失时会带 `input_underflow` / `input_overflow`,某些后端还会把 stream 推进 `aborted` 状态。在 callback 里检测到异常 flag → 通过 `threading.Event` 通知主控停止录音 + 出提示。**比 probe 强**:能抓到"开始时正常,中途拔掉"的情况
+- **macOS 走 `AVAudioSession` / Linux 走 PipeWire 的 device-change 事件订阅**:更准但更重,要写两套平台代码,跟当前"`sounddevice` 一把梭"的简洁风格冲突,**不优先**
+- **提示通道**:复用现有浮窗(加一个"❗ 麦克风离线"状态文案) + 系统通知(macOS `osascript display notification` / Linux `notify-send`)二选一。浮窗成本最低且跟现有视觉风格一致
+
+**风险 / 注意点**:
+
+- `sd.query_devices()` 在某些 Linux 配置下会阻塞几十 ms(冷启动 PulseAudio query),**不要在热键回调线程同步调** —— 22 轮专门修过热键回调死锁。如果走 probe 路径,probe 必须在录音子线程里跑,失败时通过 event 回报给主控
+- **回调里 status flag 的语义跨平台不一致**:macOS / Linux / 不同 PortAudio 版本对"设备消失"的报告方式可能不同。需要在两个平台各拔一次实测验证
+- **"中途断开后 stop 流"** 在某些 PortAudio 版本里会 hang(类似 24 轮 CoreAudio 死锁),要带超时兜底
+- **频繁断连场景的去抖**:如果蓝牙耳机抖动每秒断连恢复,提示不能每次都弹。设个最小间隔(比如 5s 内只提示一次)
+- **跟 23 轮设置页麦克风检测的关系**:运行时检测到离线时,提示文案里附一句"打开设置页检测麦克风"做引导,把两轮工作串起来
+- **空白音频幻觉是另一个问题**(23 轮 SUMMARY 局限性 #1):麦克风**在线但用户没说话**时,Qwen3-ASR 仍可能幻觉。本条**不解决幻觉**,只解决"设备离线"。幻觉那条值得单独开一个 backlog(RMS 阈值 / VAD / 静音过滤)
+
+**scope**:小到中。
+- 只做"录音前 probe + 浮窗提示" → ~50 行 + 浮窗加一个 error 状态 + 三语 locale 各 2-3 条新字符串,**半天能落地**
+- 加"InputStream callback status 监控 + 中途断开处理" → 再加 ~50 行 + 两平台实测验证,**多半天**
+- macOS/PipeWire device-change 事件订阅那条**不在本轮 scope** ,真要做单开一轮
+
+**优先级**:中偏高 —— 用户主动报的痛点,影响信任感(用户不知道是程序坏了还是自己机器坏了)。建议先做 probe 那一档(最小可行),实测一段时间再决定要不要上中途断开监控。
+
+---
+
 ### 流式 preview 浮窗显示 pending
 
 **背景**:28 轮状态机维护 `pending_tokens`(rollback 窗口内未 commit 的 token),
@@ -127,8 +171,6 @@
 路径 2。
 
 ---
-
-## 设置页体验
 
 ### STT 模型按需可视化下载 + 已下载状态感知
 
