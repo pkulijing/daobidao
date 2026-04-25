@@ -1,0 +1,45 @@
+[project]
+name = "whisper-input"
+version = "0.9.0"
+description = "已改名为 daobidao,本包仅做转发(shim)。请运行 `pip install daobidao`。"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { email = "pkuyplijing@gmail.com" },
+]
+requires-python = ">=3.12.13,<3.13"
+keywords = ["daobidao", "whisper-input", "renamed"]
+classifiers = [
+    "Development Status :: 7 - Inactive",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+]
+
+# 唯一作用:让 `pip install whisper-input` 自动顺带把真包 daobidao 装进来。
+# 老用户 `pip install -U whisper-input` 平滑过渡到新名字。
+dependencies = [
+    "daobidao>=1.0.0",
+]
+
+[project.scripts]
+# 老 console script 名仍然可用,但内部直接转发到 daobidao.__main__:main,
+# 并打一行迁移提示。彻底无 import 的话,老脚本里的 `whisper-input -k ...`
+# 命令也不会断。
+whisper-input = "whisper_input.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/pkulijing/daobidao"
+Repository = "https://github.com/pkulijing/daobidao"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/whisper_input"]
+
+[[tool.uv.index]]
+name = "tuna"
+url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"
+default = true

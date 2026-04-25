@@ -1,4 +1,4 @@
-"""Tests for ``whisper_input.stt.qwen3._downloader``.
+"""Tests for ``daobidao.stt.qwen3._downloader``.
 
 The real ``snapshot_download`` call is mocked so these tests run without
 network access and without model-sized downloads. We assert that the right
@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 import pytest
 
-from whisper_input.stt.qwen3._downloader import (
+from daobidao.stt.qwen3._downloader import (
     REPO_ID,
     VALID_VARIANTS,
     download_qwen3_asr,

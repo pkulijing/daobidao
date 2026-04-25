@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from whisper_input.__main__ import WhisperInput
+from daobidao.__main__ import WhisperInput
 
 
 @pytest.fixture
@@ -25,7 +25,7 @@ def wi(monkeypatch):
     fake_stt = MagicMock()
     fake_stt.variant = "0.6B"
     monkeypatch.setattr(
-        "whisper_input.__main__.create_stt_engine",
+        "daobidao.__main__.create_stt_engine",
         lambda cfg: fake_stt,
     )
     instance = WhisperInput(
@@ -73,7 +73,7 @@ def test_switch_success_replaces_stt(wi: WhisperInput):
     new_stt.variant = "1.7B"
 
     with patch(
-        "whisper_input.stt.qwen3.Qwen3ASRSTT", return_value=new_stt
+        "daobidao.stt.qwen3.Qwen3ASRSTT", return_value=new_stt
     ) as mock_cls:
         wi._switch_stt_variant("1.7B")
         status = _wait_until_not_switching(wi)
@@ -92,7 +92,7 @@ def test_switch_failure_preserves_old_stt(wi: WhisperInput):
     old_stt = wi.stt
 
     with patch(
-        "whisper_input.stt.qwen3.Qwen3ASRSTT",
+        "daobidao.stt.qwen3.Qwen3ASRSTT",
         side_effect=RuntimeError("network down"),
     ):
         wi._switch_stt_variant("1.7B")
@@ -121,7 +121,7 @@ def test_switch_concurrent_request_rejected(wi: WhisperInput):
         return fake
 
     with patch(
-        "whisper_input.stt.qwen3.Qwen3ASRSTT", side_effect=slow_stt
+        "daobidao.stt.qwen3.Qwen3ASRSTT", side_effect=slow_stt
     ) as mock_cls:
         wi._switch_stt_variant("1.7B")
         assert start.wait(timeout=2.0), "first switch never started"
@@ -144,7 +144,7 @@ def test_on_config_changed_triggers_switch(wi: WhisperInput):
     new_stt.variant = "1.7B"
 
     with patch(
-        "whisper_input.stt.qwen3.Qwen3ASRSTT", return_value=new_stt
+        "daobidao.stt.qwen3.Qwen3ASRSTT", return_value=new_stt
     ) as mock_cls:
         wi.on_config_changed({"qwen3.variant": "1.7B"})
         _wait_until_not_switching(wi)
@@ -157,7 +157,7 @@ def test_on_config_changed_without_variant_does_not_switch(
     wi: WhisperInput,
 ):
     with patch(
-        "whisper_input.stt.qwen3.Qwen3ASRSTT"
+        "daobidao.stt.qwen3.Qwen3ASRSTT"
     ) as mock_cls:
         wi.on_config_changed({"sound.enabled": True})
         # 无 qwen3.variant key,不应构造新 STT
@@ -182,7 +182,7 @@ def test_switch_status_target_variant_during_switch(wi: WhisperInput):
         return fake
 
     with patch(
-        "whisper_input.stt.qwen3.Qwen3ASRSTT", side_effect=slow_stt
+        "daobidao.stt.qwen3.Qwen3ASRSTT", side_effect=slow_stt
     ):
         wi._switch_stt_variant("1.7B")
         assert start.wait(timeout=2.0)

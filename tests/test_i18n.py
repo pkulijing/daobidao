@@ -3,7 +3,7 @@
 import json
 from importlib.resources import files
 
-from whisper_input.i18n import (
+from daobidao.i18n import (
     DEFAULT_LANGUAGE,
     SUPPORTED_LANGUAGES,
     get_all_locales,
@@ -40,7 +40,7 @@ class TestLoadLocales:
         )
 
     def test_locale_files_are_valid_json(self):
-        locales_dir = files("whisper_input.assets.locales")
+        locales_dir = files("daobidao.assets.locales")
         for lang in SUPPORTED_LANGUAGES:
             data = (
                 locales_dir.joinpath(f"{lang}.json")

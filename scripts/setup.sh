@@ -1,7 +1,7 @@
 #!/bin/bash
-# Whisper Input - 贡献者开发环境配置脚本
+# Daobidao - 贡献者开发环境配置脚本
 #
-# 面向 clone 本仓库的贡献者：装好系统依赖 + uv + `uv sync`，之后 `uv run whisper-input` 就能跑。
+# 面向 clone 本仓库的贡献者：装好系统依赖 + uv + `uv sync`，之后 `uv run daobidao` 就能跑。
 # 终端用户请用仓库根目录的 install.sh（curl | sh 一键装）。
 #
 # 参数：
@@ -32,11 +32,11 @@ done
 
 if [ "$SYSTEM_DEPS_ONLY" = "1" ]; then
     echo "========================================="
-    echo "  Whisper Input 系统依赖安装 ($OS)"
+    echo "  Daobidao 系统依赖安装 ($OS)"
     echo "========================================="
 else
     echo "========================================="
-    echo "  Whisper Input 开发环境配置 ($OS)"
+    echo "  Daobidao 开发环境配置 ($OS)"
     echo "========================================="
 fi
 echo ""
@@ -182,7 +182,7 @@ echo "  配置完成！"
 echo "========================================="
 echo ""
 echo "运行："
-echo "  uv run whisper-input"
+echo "  uv run daobidao"
 echo ""
 
 if [ "$OS" = "Darwin" ]; then

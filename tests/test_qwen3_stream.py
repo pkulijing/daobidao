@@ -16,12 +16,12 @@ from typing import Any
 import numpy as np
 import pytest
 
-from whisper_input.stt.base import (
+from daobidao.stt.base import (
     STREAMING_CHUNK_SAMPLES,
     StreamingKVOverflowError,
 )
-from whisper_input.stt.qwen3 import _stream as stream_mod
-from whisper_input.stt.qwen3._stream import (
+from daobidao.stt.qwen3 import _stream as stream_mod
+from daobidao.stt.qwen3._stream import (
     MAX_NEW_TOKENS_PER_CHUNK,
     ROLLBACK_TOKENS,
     init_stream_state,
@@ -527,7 +527,7 @@ def test_stream_step_committed_text_diff_gives_delta():
     assert "".join(deltas) == state.committed_text
     # committed_text = parse_asr_output(tokenizer.decode(committed_tokens))
     # —— 即去掉 "<asr_text>" marker 之前 scaffolding 之后的部分
-    from whisper_input.stt.qwen3._postprocess import parse_asr_output
+    from daobidao.stt.qwen3._postprocess import parse_asr_output
 
     expected = parse_asr_output(
         tok.decode(state.committed_tokens, skip_special_tokens=True)

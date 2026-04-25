@@ -1,6 +1,6 @@
 """测试 macOS 自启动 plist 生成 / 启用 / 禁用。
 
-针对 src/whisper_input/backends/autostart_macos.py。
+针对 src/daobidao/backends/autostart_macos.py。
 
 注意:这个文件**纯 stdlib,不 import pyobjc**,所以 linux CI 上也能跑。
 
@@ -14,7 +14,7 @@
 import plistlib
 import sys
 
-from whisper_input.backends import autostart_macos as am
+from daobidao.backends import autostart_macos as am
 
 
 def test_xml_escape():
@@ -24,17 +24,17 @@ def test_xml_escape():
 
 def _mock_no_bundle(monkeypatch):
     """让 _program_arguments 跳过 .app bundle 检查。"""
-    import whisper_input.backends.app_bundle_macos as abm
+    import daobidao.backends.app_bundle_macos as abm
 
     monkeypatch.setattr(abm, "is_app_bundle_installed", lambda: False)
 
 
 def test_program_arguments_prefers_venv_script(tmp_path, monkeypatch):
-    """sys.prefix/bin/whisper-input 存在 → 返回它,不退回 -m。"""
+    """sys.prefix/bin/daobidao 存在 → 返回它,不退回 -m。"""
     _mock_no_bundle(monkeypatch)
     fake_prefix = tmp_path / "venv"
     (fake_prefix / "bin").mkdir(parents=True)
-    script = fake_prefix / "bin" / "whisper-input"
+    script = fake_prefix / "bin" / "daobidao"
     script.write_text("#!/bin/sh\n")
 
     monkeypatch.setattr(sys, "prefix", str(fake_prefix))
@@ -46,7 +46,7 @@ def test_program_arguments_falls_back_to_module(tmp_path, monkeypatch):
     _mock_no_bundle(monkeypatch)
     monkeypatch.setattr(sys, "prefix", str(tmp_path))  # 没有 bin/
     args = am._program_arguments()
-    assert args == [sys.executable, "-m", "whisper_input"]
+    assert args == [sys.executable, "-m", "daobidao"]
 
 
 def _mock_log_dir(monkeypatch, tmp_path):
@@ -65,16 +65,16 @@ def test_build_plist_is_valid_and_correct(tmp_path, monkeypatch):
 
     plist_xml = am._build_plist()
     parsed = plistlib.loads(plist_xml.encode("utf-8"))
-    assert parsed["Label"] == "com.whisper-input"
+    assert parsed["Label"] == "com.daobidao"
     assert parsed["RunAtLoad"] is True
     assert parsed["KeepAlive"] is False
     assert parsed["ProcessType"] == "Interactive"
     assert parsed["ProgramArguments"] == [
         sys.executable,
         "-m",
-        "whisper_input",
+        "daobidao",
     ]
-    expected_log = str(tmp_path / "logs" / "whisper-input-launchd.log")
+    expected_log = str(tmp_path / "logs" / "daobidao-launchd.log")
     assert parsed["StandardOutPath"] == expected_log
     assert parsed["StandardErrorPath"] == expected_log
 
@@ -82,7 +82,7 @@ def test_build_plist_is_valid_and_correct(tmp_path, monkeypatch):
 def test_set_autostart_true_writes_file(tmp_path, monkeypatch):
     """启用后 plist 文件被写到 AUTOSTART_FILE 指向的位置,内容是 _build_plist。"""
     target_dir = tmp_path / "LaunchAgents"
-    target_file = target_dir / "com.whisper-input.plist"
+    target_file = target_dir / "com.daobidao.plist"
     monkeypatch.setattr(am, "AUTOSTART_DIR", str(target_dir))
     monkeypatch.setattr(am, "AUTOSTART_FILE", str(target_file))
     log_dir = _mock_log_dir(monkeypatch, tmp_path)
@@ -95,7 +95,7 @@ def test_set_autostart_true_writes_file(tmp_path, monkeypatch):
 
     # 内容是合法 plist
     parsed = plistlib.loads(target_file.read_bytes())
-    assert parsed["Label"] == "com.whisper-input"
+    assert parsed["Label"] == "com.daobidao"
 
 
 def test_set_autostart_false_removes_file_and_calls_launchctl(
@@ -104,7 +104,7 @@ def test_set_autostart_false_removes_file_and_calls_launchctl(
     """禁用后文件被删,且 launchctl bootout 被调用一次。"""
     target_dir = tmp_path / "LaunchAgents"
     target_dir.mkdir()
-    target_file = target_dir / "com.whisper-input.plist"
+    target_file = target_dir / "com.daobidao.plist"
     target_file.write_text("<plist></plist>")  # 假装已经启用过
 
     monkeypatch.setattr(am, "AUTOSTART_DIR", str(target_dir))
@@ -131,7 +131,7 @@ def test_set_autostart_false_removes_file_and_calls_launchctl(
     assert len(calls) == 1
     assert calls[0][0] == "launchctl"
     assert calls[0][1] == "bootout"
-    assert "com.whisper-input" in calls[0][2]
+    assert "com.daobidao" in calls[0][2]
 
 
 def test_set_autostart_false_when_already_disabled(
@@ -139,7 +139,7 @@ def test_set_autostart_false_when_already_disabled(
 ):
     """重复禁用不应该报错。"""
     target_dir = tmp_path / "LaunchAgents"
-    target_file = target_dir / "com.whisper-input.plist"
+    target_file = target_dir / "com.daobidao.plist"
     monkeypatch.setattr(am, "AUTOSTART_DIR", str(target_dir))
     monkeypatch.setattr(am, "AUTOSTART_FILE", str(target_file))
     monkeypatch.setattr(am.subprocess, "run", lambda *a, **kw: None)

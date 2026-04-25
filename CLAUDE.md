@@ -4,17 +4,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Whisper Input is a cross-platform desktop voice input tool (Linux + macOS): hold a hotkey, speak, release to have speech transcribed and typed into the focused window. Uses Qwen3-ASR (Alibaba Qwen team's encoder-decoder ASR) ONNX int8 quantization for local STT, loaded via Microsoft's `onnxruntime` (no PyTorch, no transformers), and clipboard-based paste for text input.
+Daobidao is a cross-platform desktop voice input tool (Linux + macOS): hold a hotkey, speak, release to have speech transcribed and typed into the focused window. Uses Qwen3-ASR (Alibaba Qwen team's encoder-decoder ASR) ONNX int8 quantization for local STT, loaded via Microsoft's `onnxruntime` (no PyTorch, no transformers), and clipboard-based paste for text input.
 
-Project uses **src layout**: all Python code lives under `src/whisper_input/` as a single installable distribution. `uv sync` installs it as an editable wheel; the `whisper-input` console script (or `python -m whisper_input`) is the only entry point. Dev setup scripts live in `scripts/`.
+Project uses **src layout**: all Python code lives under `src/daobidao/` as a single installable distribution. `uv sync` installs it as an editable wheel; the `daobidao` console script (or `python -m daobidao`) is the only entry point. Dev setup scripts live in `scripts/`.
 
-**Distribution is PyPI only, installed via `uv tool install whisper-input`**. We don't document or support pipx / bare `pip install` paths — the in-app auto-updater only recognizes uv tool installs and shows a "please upgrade via uv tool" hint otherwise. No `.app` bundle as a release artifact, no `.deb`, no `python-build-standalone` bootstrap. If you see anything about `packaging/` / `scripts/build.sh` / `setup_window.py` in old docs, those were deleted in round 14 (see `docs/14-PyPI分发/`).
+**Distribution is PyPI only, installed via `uv tool install daobidao`**. We don't document or support pipx / bare `pip install` paths — the in-app auto-updater only recognizes uv tool installs and shows a "please upgrade via uv tool" hint otherwise. No `.app` bundle as a release artifact, no `.deb`, no `python-build-standalone` bootstrap. If you see anything about `packaging/` / `scripts/build.sh` / `setup_window.py` in old docs, those were deleted in round 14 (see `docs/14-PyPI分发/`).
 
 **Round 26 replaced SenseVoice with Qwen3-ASR**. SenseVoice recognized only keywords on many real utterances; Qwen3-ASR-0.6B produces exact-text matches on the same audio. Migration details in `docs/26-Qwen3-ASR替换SenseVoice/`. If you see anything about `stt/sense_voice.py` / `_wav_frontend.py` / `kaldi-native-fbank` / `sentencepiece` in old docs, those are gone — the STT stack is now `onnxruntime + tokenizers + modelscope + numpy`.
 
 **Future work / backlog** lives in [BACKLOG.md](BACKLOG.md) at the repo root — that file is the authoritative source of "what might be done next". Per-round `SUMMARY.md` files keep their "后续 TODO" sections but those are just notes from that round; anything worth actually remembering should be synced into `BACKLOG.md`.
 
-Platform-specific backends in `src/whisper_input/backends/`:
+Platform-specific backends in `src/daobidao/backends/`:
 - **Linux**: evdev for keyboard events, xclip+xdotool for text input, XDG autostart
 - **macOS**: pynput for keyboard events and text input, LaunchAgents for autostart
 
@@ -27,14 +27,14 @@ bash scripts/setup.sh          # auto-detects macOS / Linux
 uv sync
 
 # Run (dev mode)
-uv run whisper-input
-uv run whisper-input -k KEY_FN           # custom hotkey (macOS Fn key)
-uv run whisper-input -k KEY_RIGHTALT     # custom hotkey
-uv run whisper-input --no-tray           # no system tray
-uv run whisper-input --no-preload        # skip model preload
-uv run whisper-input -c /path/config.yaml
+uv run daobidao
+uv run daobidao -k KEY_FN           # custom hotkey (macOS Fn key)
+uv run daobidao -k KEY_RIGHTALT     # custom hotkey
+uv run daobidao --no-tray           # no system tray
+uv run daobidao --no-preload        # skip model preload
+uv run daobidao -c /path/config.yaml
 # Equivalent invocation (bypasses the console script wrapper):
-uv run python -m whisper_input
+uv run python -m daobidao
 
 # Lint (ruff)
 uv run ruff check .
@@ -56,21 +56,21 @@ Test scope (`tests/`): `config_manager` (including the sensevoice→qwen3 auto-m
 
 Coverage (round 26): overall ~61% line coverage (baseline before round 26 was 51%). The `stt/qwen3/` subpackage is 100% covered across all 8 modules. `config_manager` / `autostart_*` 90-100%, `settings_server` ~90%, `hotkey_*` state machine 54% (only listen loops / `start` / `stop` missing). The uncovered remainder is mostly `__main__.main()` CLI wiring (lines 429-665), `recorder.py`, `overlay_*.py` — all deliberate gaps, predating round 26.
 
-The STT smoke tests download ~990 MB of ONNX + tokenizer for the 0.6B variant (and optionally ~2.4 GB for 1.7B) to `~/.cache/modelscope/hub/models/zengshuishui/Qwen3-ASR-onnx/` on first run. CI caches via `actions/cache@v4` keyed on `modelscope-qwen3-asr-v1` (bump to invalidate). Locally the model is usually already cached from running `whisper-input` itself; if not, expect the first `pytest` invocation to be slow. Point `WHISPER_INPUT_QWEN3_DIR` at a pre-downloaded bundle to bypass ModelScope entirely in tests.
+The STT smoke tests download ~990 MB of ONNX + tokenizer for the 0.6B variant (and optionally ~2.4 GB for 1.7B) to `~/.cache/modelscope/hub/models/zengshuishui/Qwen3-ASR-onnx/` on first run. CI caches via `actions/cache@v4` keyed on `modelscope-qwen3-asr-v1` (bump to invalidate). Locally the model is usually already cached from running `daobidao` itself; if not, expect the first `pytest` invocation to be slow. Point `DAOBIDAO_QWEN3_DIR` at a pre-downloaded bundle to bypass ModelScope entirely in tests.
 
-For STT sanity check, instantiate `whisper_input.stt.qwen3.Qwen3ASRSTT(variant="0.6B")` and feed it a 16 kHz mono WAV.
+For STT sanity check, instantiate `daobidao.stt.qwen3.Qwen3ASRSTT(variant="0.6B")` and feed it a 16 kHz mono WAV.
 
 ## Architecture
 
-Event-driven pipeline orchestrated by `WhisperInput` in `src/whisper_input/__main__.py`:
+Event-driven pipeline orchestrated by `WhisperInput` in `src/daobidao/__main__.py`:
 
 ```
-HotkeyListener (whisper_input.backends) → AudioRecorder (sounddevice, 16kHz mono)
-                                        → whisper_input.stt.Qwen3ASRSTT (onnxruntime)
-                                        → InputMethod (whisper_input.backends, clipboard paste)
+HotkeyListener (daobidao.backends) → AudioRecorder (sounddevice, 16kHz mono)
+                                        → daobidao.stt.Qwen3ASRSTT (onnxruntime)
+                                        → InputMethod (daobidao.backends, clipboard paste)
 ```
 
-Key modules (all paths relative to `src/whisper_input/`):
+Key modules (all paths relative to `src/daobidao/`):
 - **`__main__.py`** — Entry point, CLI args, `WhisperInput` controller, system tray setup. Exposes `main()` for the console script. Also owns the STT variant hot-switch worker (background thread + atomic `self.stt` swap + `gc.collect` to free the old ONNX session).
 - **`hotkey.py`** — Dispatcher: imports `HotkeyListener` from platform backend
 - **`input_method.py`** — Dispatcher: imports `type_text` from platform backend
@@ -80,8 +80,8 @@ Key modules (all paths relative to `src/whisper_input/`):
 - **`backends/hotkey_macos.py`** — pynput global keyboard listener with same combo-key logic
 - **`backends/input_linux.py`** — xclip + xdotool Ctrl+V paste
 - **`backends/input_macos.py`** — pbcopy/pbpaste + pynput Cmd+V paste
-- **`backends/autostart_linux.py`** — XDG .desktop file autostart (template read via `importlib.resources` from `whisper_input.assets`)
-- **`backends/autostart_macos.py`** — LaunchAgents plist autostart; `ProgramArguments` points at `sys.prefix/bin/whisper-input` (works for dev venv and uv tool installs), falls back to `[sys.executable, "-m", "whisper_input"]`
+- **`backends/autostart_linux.py`** — XDG .desktop file autostart (template read via `importlib.resources` from `daobidao.assets`)
+- **`backends/autostart_macos.py`** — LaunchAgents plist autostart; `ProgramArguments` points at `sys.prefix/bin/daobidao` (works for dev venv and uv tool installs), falls back to `[sys.executable, "-m", "daobidao"]`
 - **`recorder.py`** — `AudioRecorder`: sounddevice capture → WAV bytes
 - **`stt/`** — STT backend package (pluggable):
   - `stt/base.py` — `BaseSTT` abstract class (`load` + `transcribe`)
@@ -94,10 +94,10 @@ Key modules (all paths relative to `src/whisper_input/`):
     - `_postprocess.py` — `parse_asr_output(raw)`: extract content after the last `<asr_text>` marker and strip any stray `<|...|>` chat tokens that leak through greedy decode.
     - `_downloader.py` — `download_qwen3_asr(variant)` → `Path`. Calls `modelscope.snapshot_download("zengshuishui/Qwen3-ASR-onnx", allow_patterns=["model_{variant}/*.onnx", "tokenizer/*"])` so 0.6B users don't pull the 1.7B bundle and vice versa.
     - `_onnx_runner.py` — `Qwen3ONNXRunner`: 3 ONNX sessions (`conv_frontend.onnx` + `encoder.int8.onnx` + `decoder.int8.onnx`). 28 decoder layers with KV cache shape `(1, max_total_len=1200, 8 kv_heads, 128 head_dim)`. `decoder_step(input_ids, audio_features, caches, cur_len)` writes KV deltas in-place at positions `[cur_len, cur_len+seq)` — absolute positioning via `cache_position` is a deliberate choice for round 27 streaming.
-- **`config_manager.py`** — YAML config with platform-aware paths and defaults; dev mode detects repo root via `.git` + `pyproject.toml` marker, reads example config from `whisper_input.assets` via `importlib.resources`. `_migrate_legacy(cfg)` rewrites `engine=sensevoice` + any `sensevoice.*` block into `engine=qwen3` + `qwen3.variant="0.6B"` on load, then auto-persists if changed. `_deep_merge` uses `copy.deepcopy` (not shallow) so `DEFAULT_CONFIG` can't be mutated through a returned dict — previously a latent bug.
+- **`config_manager.py`** — YAML config with platform-aware paths and defaults; dev mode detects repo root via `.git` + `pyproject.toml` marker, reads example config from `daobidao.assets` via `importlib.resources`. `_migrate_legacy(cfg)` rewrites `engine=sensevoice` + any `sensevoice.*` block into `engine=qwen3` + `qwen3.variant="0.6B"` on load, then auto-persists if changed. `_deep_merge` uses `copy.deepcopy` (not shallow) so `DEFAULT_CONFIG` can't be mutated through a returned dict — previously a latent bug.
 - **`settings_server.py`** — Built-in HTTP server serving web UI + REST API for settings. Exposes `GET /api/stt/switch_status` so the "识别模型" dropdown can poll during a variant switch (every 500ms while `switching=true`).
-- **`version.py`** — `__version__` from `importlib.metadata.version("whisper-input")`, `__commit__` from package-data `_commit.txt` if present (release flow may write it) or `git rev-parse HEAD` fallback in dev mode
-- **`assets/`** — Package data: `whisper-input.png` (tray icon), `whisper-input.desktop` (Linux autostart template, `Exec=whisper-input` relies on PATH), `config.example.yaml`, `settings.html`, `locales/{zh,en,fr}.json`. Accessed via `importlib.resources.files("whisper_input.assets")`.
+- **`version.py`** — `__version__` from `importlib.metadata.version("daobidao")`, `__commit__` from package-data `_commit.txt` if present (release flow may write it) or `git rev-parse HEAD` fallback in dev mode
+- **`assets/`** — Package data: `daobidao.png` (tray icon), `daobidao.desktop` (Linux autostart template, `Exec=daobidao` relies on PATH), `config.example.yaml`, `settings.html`, `locales/{zh,en,fr}.json`. Accessed via `importlib.resources.files("daobidao.assets")`.
 
 ## Key Technical Decisions
 
@@ -112,7 +112,7 @@ Key modules (all paths relative to `src/whisper_input/`):
 - **Tokenization via HF `tokenizers` (Rust), not `transformers`**: Qwen3-ASR ships `vocab.json` + `merges.txt` + `tokenizer_config.json` (no `tokenizer.json` fast snapshot), so we rebuild a byte-level BPE tokenizer at load time with the 62 added tokens. The `tokenizers` wheel is ~10 MB vs `transformers`'s ~100 MB and a much heavier transitive graph.
 - **Absolute-position KV cache + `cache_position` input**: the ONNX decoder takes `cache_position` as an explicit input, so we allocate a single fixed-size cache buffer (`(1, 1200, 8, 128)` per layer, both K and V, × 28 layers) and rewrite slices in place as generation advances. Round 27 streaming reuses this directly — no cache-shape renegotiation between chunks.
 - **Hot-switch STT variant via background thread + atomic swap**: user picks 0.6B/1.7B in the settings-page dropdown → `WhisperInput._switch_stt_variant` runs in a background thread, builds a new `Qwen3ASRSTT`, calls `.load()` (download + warmup), then atomically assigns `self.stt = new_stt` and `gc.collect()`s the old ONNX session. The `/api/stt/switch_status` endpoint + dropdown polling gives the user progress feedback; in-flight transcriptions keep pointing at the old session because the atomic swap doesn't interrupt them.
-- **macOS uses pynput**: requires only Accessibility permission for global key monitoring (Input Monitoring is NOT needed — that's for `kCGHIDEventTap`, we use `kCGSessionEventTap` + listen-only). First run installs `~/Applications/Whisper Input.app` — a minimal Objective-C launcher that `dlopen`s libpython and runs `whisper_input` in-process. TCC attributes the permission to "Whisper Input" rather than the Python interpreter.
+- **macOS uses pynput**: requires only Accessibility permission for global key monitoring (Input Monitoring is NOT needed — that's for `kCGHIDEventTap`, we use `kCGSessionEventTap` + listen-only). First run installs `~/Applications/Daobidao.app` — a minimal Objective-C launcher that `dlopen`s libpython and runs `daobidao` in-process. TCC attributes the permission to "Daobidao" rather than the Python interpreter.
 - **PyPI distribution only**: no `.app` / `.deb` / `.dmg` bundles. Round 14 deleted all of `packaging/`, `scripts/build.sh`, `scripts/run_macos.sh`, and the self-rolled `stt/downloader.py` / `stt/model_paths.py`. The premise is: in an immature project, chasing "one-click installer for non-technical users" was premature optimization; PyPI is the right baseline, fancy installers can come later once the foundation is proven
 
 ## Ruff Configuration
@@ -137,7 +137,7 @@ Model files for the 0.6B variant (~990 MB: 3 ONNX + tokenizer dir) are downloade
 
 When the upstream ModelScope repo pushes a new ONNX export:
 1. Test manually in a dev venv whether the new revision still works (snapshot_download defaults to the repo's default branch — usually `master` — so pulling fresh automatically picks up the latest)
-2. If you want to pin to a specific revision, pass `revision="<tag-or-commit>"` to the `snapshot_download` call in `src/whisper_input/stt/qwen3/_downloader.py:download_qwen3_asr()`
+2. If you want to pin to a specific revision, pass `revision="<tag-or-commit>"` to the `snapshot_download` call in `src/daobidao/stt/qwen3/_downloader.py:download_qwen3_asr()`
 3. No SHA256 lock to update — `modelscope` verifies file integrity via its own metadata (content-length + per-file hash from the repo manifest)
 4. If the ONNX graph changes its IO schema (new inputs/outputs, renamed tensors), run `scripts/spike_qwen3_onnx.py` against the new bundle and compare against the PLAN-documented schema in `docs/26-Qwen3-ASR替换SenseVoice/` — the runner introspects layer count / kv shape dynamically, but a new input name would require code changes.
 
@@ -146,7 +146,7 @@ When the upstream ModelScope repo pushes a new ONNX export:
 End users install from PyPI:
 
 ```bash
-uv tool install whisper-input
+uv tool install daobidao
 ```
 
 This is the **only** supported install path. The in-app auto-updater only

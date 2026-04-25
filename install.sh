@@ -1,16 +1,16 @@
 #!/bin/sh
-# Whisper Input - 一键安装脚本 / one-shot installer
+# Daobidao - 一键安装脚本 / one-shot installer
 #
 # Usage:
-#   curl -LsSf https://raw.githubusercontent.com/pkulijing/whisper-input/master/install.sh | sh
+#   curl -LsSf https://raw.githubusercontent.com/pkulijing/daobidao/master/install.sh | sh
 #
 # 做的事：装 uv / Python 3.12 / 系统依赖 / 跑 uv tool install --upgrade /
-# 跑 whisper-input --init (下模型 + macOS .app bundle) / 询问是否立即启动。
+# 跑 daobidao --init (下模型 + macOS .app bundle) / 询问是否立即启动。
 # 纯 POSIX sh，读 /dev/tty 做交互，无 TTY 时走默认值。
 
 set -eu
 
-# 让本轮 shell 立刻能找到 uv / whisper-input（uv 和 uv tool 都装到这里）
+# 让本轮 shell 立刻能找到 uv / daobidao（uv 和 uv tool 都装到这里）
 export PATH="$HOME/.local/bin:$PATH"
 
 # ---------- 全局状态 ----------
@@ -68,7 +68,7 @@ prompt_yesno() {
 # ---------- 双语消息 ----------
 # 所有面向用户的字符串放这里，中英各一支。保持 POSIX sh 风格，不搞 i18n 框架。
 msg_lang_prompt()              { printf 'Language / 语言:\n  [1] 中文 (default)\n  [2] English\nSelect / 选择: '; }
-msg_header()                   { [ "$LANG_CHOICE" = en ] && echo "Whisper Input installer" || echo "Whisper Input 一键安装"; }
+msg_header()                   { [ "$LANG_CHOICE" = en ] && echo "Daobidao installer" || echo "Daobidao 一键安装"; }
 msg_unsupported_os()           { [ "$LANG_CHOICE" = en ] && echo "Unsupported OS: $1 (only macOS / Linux are supported)" || echo "不支持的操作系统: $1（仅支持 macOS / Linux）"; }
 msg_unsupported_arch()         { [ "$LANG_CHOICE" = en ] && echo "Untested architecture: $1 — continuing anyway" || echo "未测试的架构: $1 —— 继续，但可能有风险"; }
 msg_step_uv()                  { [ "$LANG_CHOICE" = en ] && echo "[1/6] Checking uv..." || echo "[1/6] 检查 uv..."; }
@@ -120,15 +120,15 @@ EOF
 }
 msg_step_inputgroup()          { [ "$LANG_CHOICE" = en ] && echo "[4/6] Checking Linux 'input' group..." || echo "[4/6] 检查 Linux 'input' 组权限..."; }
 msg_inputgroup_present()       { [ "$LANG_CHOICE" = en ] && echo "User is already in 'input' group" || echo "用户已在 'input' 组"; }
-msg_inputgroup_prompt()        { [ "$LANG_CHOICE" = en ] && echo "whisper-input needs /dev/input/* access. Add you to the 'input' group now? (requires sudo)" || echo "whisper-input 需要读取 /dev/input/* 的权限。是否将你加入 'input' 组？（需要 sudo）"; }
+msg_inputgroup_prompt()        { [ "$LANG_CHOICE" = en ] && echo "daobidao needs /dev/input/* access. Add you to the 'input' group now? (requires sudo)" || echo "daobidao 需要读取 /dev/input/* 的权限。是否将你加入 'input' 组？（需要 sudo）"; }
 msg_inputgroup_added()         { [ "$LANG_CHOICE" = en ] && echo "Added to 'input' group. You MUST log out and log back in for it to take effect." || echo "已加入 'input' 组。**必须注销并重新登录后才会生效**。"; }
-msg_inputgroup_skipped()       { [ "$LANG_CHOICE" = en ] && echo "Skipped. Remember to run 'sudo usermod -aG input \$USER' and re-login before using whisper-input." || echo "已跳过。使用 whisper-input 前别忘了手动执行 'sudo usermod -aG input \$USER' 并重新登录。"; }
-msg_step_tool_install()        { [ "$LANG_CHOICE" = en ] && echo "[5/6] Installing whisper-input via uv tool..." || echo "[5/6] 通过 uv tool 安装 whisper-input..."; }
-msg_step_init()                { [ "$LANG_CHOICE" = en ] && echo "[6/6] Running whisper-input --init (downloads Qwen3-ASR 0.6B, ~990MB on first run; may take a few minutes)..." || echo "[6/6] 运行 whisper-input --init（首次下载 Qwen3-ASR 0.6B 模型,约 990MB,可能需要几分钟）..."; }
+msg_inputgroup_skipped()       { [ "$LANG_CHOICE" = en ] && echo "Skipped. Remember to run 'sudo usermod -aG input \$USER' and re-login before using daobidao." || echo "已跳过。使用 daobidao 前别忘了手动执行 'sudo usermod -aG input \$USER' 并重新登录。"; }
+msg_step_tool_install()        { [ "$LANG_CHOICE" = en ] && echo "[5/6] Installing daobidao via uv tool..." || echo "[5/6] 通过 uv tool 安装 daobidao..."; }
+msg_step_init()                { [ "$LANG_CHOICE" = en ] && echo "[6/6] Running daobidao --init (downloads Qwen3-ASR 0.6B, ~990MB on first run; may take a few minutes)..." || echo "[6/6] 运行 daobidao --init（首次下载 Qwen3-ASR 0.6B 模型,约 990MB,可能需要几分钟）..."; }
 msg_done_header()              { [ "$LANG_CHOICE" = en ] && echo "Installation complete!" || echo "安装完成！"; }
-msg_launch_prompt()            { [ "$LANG_CHOICE" = en ] && echo "Launch whisper-input now?" || echo "是否立即启动 whisper-input？"; }
-msg_launch_relogin_warning()   { [ "$LANG_CHOICE" = en ] && echo "You were just added to the 'input' group — log out and back in before launching, otherwise whisper-input cannot read /dev/input/*. Launch anyway?" || echo "你刚刚被加入 'input' 组 —— 启动前必须注销重新登录，否则 whisper-input 无法读取 /dev/input/*。仍然启动？"; }
-msg_not_launched_hint()        { [ "$LANG_CHOICE" = en ] && echo "Run 'whisper-input' anytime to start." || echo "之后随时执行 'whisper-input' 即可启动。"; }
+msg_launch_prompt()            { [ "$LANG_CHOICE" = en ] && echo "Launch daobidao now?" || echo "是否立即启动 daobidao？"; }
+msg_launch_relogin_warning()   { [ "$LANG_CHOICE" = en ] && echo "You were just added to the 'input' group — log out and back in before launching, otherwise daobidao cannot read /dev/input/*. Launch anyway?" || echo "你刚刚被加入 'input' 组 —— 启动前必须注销重新登录，否则 daobidao 无法读取 /dev/input/*。仍然启动？"; }
+msg_not_launched_hint()        { [ "$LANG_CHOICE" = en ] && echo "Run 'daobidao' anytime to start." || echo "之后随时执行 'daobidao' 即可启动。"; }
 msg_noninteractive_default_yes() { [ "$LANG_CHOICE" = en ] && echo "(no tty; defaulting to yes)" || echo "（无交互终端，默认 yes）"; }
 msg_noninteractive_default_no()  { [ "$LANG_CHOICE" = en ] && echo "(no tty; defaulting to no)" || echo "（无交互终端，默认 no）"; }
 
@@ -275,16 +275,16 @@ ensure_input_group() {
 }
 
 # ---------- 步骤 5: uv tool install ----------
-install_whisper_input() {
+install_daobidao() {
     info "$(msg_step_tool_install)"
     # --upgrade 处理重复安装 / 升级；--compile-bytecode 跳过首次运行编译 .pyc
-    uv tool install --upgrade --compile-bytecode whisper-input
+    uv tool install --upgrade --compile-bytecode daobidao
 }
 
 # ---------- 步骤 6: --init ----------
 run_init() {
     info "$(msg_step_init)"
-    whisper-input --init
+    daobidao --init
 }
 
 # ---------- 最后：问是否启动 ----------
@@ -296,14 +296,14 @@ maybe_launch() {
     if [ "$INPUT_GROUP_JUST_ADDED" -eq 1 ]; then
         # 新加入 input 组的会话启动会权限失败，默认 N
         if prompt_yesno "$(msg_launch_relogin_warning)" n; then
-            exec whisper-input
+            exec daobidao
         else
             printf '%s\n' "$(msg_not_launched_hint)"
             return
         fi
     fi
     if prompt_yesno "$(msg_launch_prompt)" y; then
-        exec whisper-input
+        exec daobidao
     else
         printf '%s\n' "$(msg_not_launched_hint)"
     fi
@@ -318,7 +318,7 @@ main() {
     install_python
     install_sysdeps
     ensure_input_group
-    install_whisper_input
+    install_daobidao
     run_init
     maybe_launch
 }

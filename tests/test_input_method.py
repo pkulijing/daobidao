@@ -1,6 +1,6 @@
 """测试两个平台的 input_method shell-out 顺序。
 
-针对 src/whisper_input/backends/input_macos.py 和 input_linux.py。
+针对 src/daobidao/backends/input_macos.py 和 input_linux.py。
 
 测试策略:
 - monkeypatch subprocess.run 成记录调用的 fake,验证调用顺序和参数
@@ -8,8 +8,8 @@
   press / release 记到 .calls 列表里
 """
 
-from whisper_input.backends import input_linux as il
-from whisper_input.backends import input_macos as im
+from daobidao.backends import input_linux as il
+from daobidao.backends import input_macos as im
 
 
 class _RunRecorder:

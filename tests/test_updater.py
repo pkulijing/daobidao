@@ -1,4 +1,4 @@
-"""测试 whisper_input.updater —— PyPI 查询 + uv tool upgrade 子进程。
+"""测试 daobidao.updater —— PyPI 查询 + uv tool upgrade 子进程。
 
 所有网络请求和子进程调用都 monkeypatch 掉，不打真实外网。
 """
@@ -12,7 +12,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from whisper_input import updater
+from daobidao import updater
 
 # --- is_newer ---
 
@@ -106,7 +106,7 @@ def test_fetch_latest_version_network_error(monkeypatch):
 def test_get_upgrade_command_ok(monkeypatch):
     monkeypatch.setattr(updater.shutil, "which", lambda _: "/opt/bin/uv")
     cmd = updater.get_upgrade_command()
-    assert cmd == ["/opt/bin/uv", "tool", "upgrade", "whisper-input"]
+    assert cmd == ["/opt/bin/uv", "tool", "upgrade", "daobidao"]
 
 
 def test_get_upgrade_command_uv_missing(monkeypatch):

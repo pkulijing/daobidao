@@ -35,23 +35,23 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from whisper_input.stt.qwen3._feature import (
+from daobidao.stt.qwen3._feature import (
     SAMPLE_RATE,
     log_mel_spectrogram,
     pad_or_trim,
 )
-from whisper_input.stt.qwen3._onnx_runner import Qwen3ONNXRunner
-from whisper_input.stt.qwen3._postprocess import (
+from daobidao.stt.qwen3._onnx_runner import Qwen3ONNXRunner
+from daobidao.stt.qwen3._postprocess import (
     parse_asr_output,
 )
-from whisper_input.stt.qwen3._prompt import (
+from daobidao.stt.qwen3._prompt import (
     AUDIO_END,
     AUDIO_START,
     IM_END,
     IM_START,
     build_prompt,
 )
-from whisper_input.stt.qwen3._tokenizer import Qwen3Tokenizer
+from daobidao.stt.qwen3._tokenizer import Qwen3Tokenizer
 
 ROLLBACK_TOKENS = 10
 CHUNK_SIZE_SEC = 2.0

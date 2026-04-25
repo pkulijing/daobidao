@@ -1,4 +1,4 @@
-"""Tests for ``whisper_input.stt.qwen3._tokenizer``.
+"""Tests for ``daobidao.stt.qwen3._tokenizer``.
 
 Requires the tokenizer files to be cached locally (see
 ``qwen3_tokenizer_dir`` fixture in ``conftest.py``). When the cache is
@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from whisper_input.stt.qwen3._tokenizer import (
+from daobidao.stt.qwen3._tokenizer import (
     Qwen3Tokenizer,
     build_qwen3_tokenizer,
 )

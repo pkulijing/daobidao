@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""生成 Whisper Input 应用图标 (256x256 PNG)。"""
+"""生成 Daobidao 应用图标 (256x256 PNG)。"""
 
 from PIL import Image, ImageDraw
 
@@ -70,10 +70,10 @@ def generate_icon(size: int = 256) -> Image.Image:
 if __name__ == "__main__":
     from pathlib import Path
 
-    # 图标作为 package data 落在 src/whisper_input/assets/
+    # 图标作为 package data 落在 src/daobidao/assets/
     repo_root = Path(__file__).resolve().parent.parent
     output_path = (
-        repo_root / "src" / "whisper_input" / "assets" / "whisper-input.png"
+        repo_root / "src" / "daobidao" / "assets" / "daobidao.png"
     )
     icon = generate_icon(1024)
     icon.save(output_path, "PNG")

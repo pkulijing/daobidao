@@ -1,10 +1,10 @@
-"""Tests for ``whisper_input.stt.qwen3._postprocess.parse_asr_output``."""
+"""Tests for ``daobidao.stt.qwen3._postprocess.parse_asr_output``."""
 
 from __future__ import annotations
 
 import pytest
 
-from whisper_input.stt.qwen3._postprocess import parse_asr_output
+from daobidao.stt.qwen3._postprocess import parse_asr_output
 
 
 @pytest.mark.parametrize(

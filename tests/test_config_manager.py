@@ -1,9 +1,9 @@
 """测试 ConfigManager 的纯逻辑路径。
 
-针对 src/whisper_input/config_manager.py。
+针对 src/daobidao/config_manager.py。
 
 所有测试都用 pytest 的 tmp_path fixture,绝不允许触碰真实的
-~/.config/whisper-input/ 或 ~/Library/Application Support/Whisper Input/。
+~/.config/daobidao/ 或 ~/Library/Application Support/Daobidao/。
 """
 
 import os
@@ -11,8 +11,8 @@ from pathlib import Path
 
 import pytest
 
-from whisper_input import config_manager
-from whisper_input.config_manager import (
+from daobidao import config_manager
+from daobidao.config_manager import (
     DEFAULT_CONFIG,
     ConfigManager,
     _deep_merge,

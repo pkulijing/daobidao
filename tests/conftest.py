@@ -1,10 +1,10 @@
 """测试套全局 fixture / setup。
 
-核心职责:在 import 任何 whisper_input 模块**之前**,往 sys.modules 里强制
+核心职责:在 import 任何 daobidao 模块**之前**,往 sys.modules 里强制
 注入伪造的 pynput / evdev,这样:
 
 1. CI 跑在 ubuntu-24.04 上,pynput 是 darwin-only 依赖根本没装,
-   `whisper_input.backends.hotkey_macos` / `input_macos` 直接 import 就会挂
+   `daobidao.backends.hotkey_macos` / `input_macos` 直接 import 就会挂
 2. 在真 macOS 上,如果不替换真 pynput,测试调到 Listener.start() 会真的开
    全局键盘监听,污染开发者的 system
 
@@ -125,7 +125,7 @@ def _install_fake_evdev() -> None:
     sys.modules["evdev.ecodes"] = ecodes
 
 
-# 必须在任何 whisper_input.backends.hotkey_* / input_* import 之前执行
+# 必须在任何 daobidao.backends.hotkey_* / input_* import 之前执行
 _install_fake_pynput()
 _install_fake_evdev()
 
@@ -141,12 +141,12 @@ def _candidate_qwen3_roots() -> list[Path]:
     """Return candidate paths that might hold the Qwen3-ASR cache.
 
     Order:
-    1. ``WHISPER_INPUT_QWEN3_DIR`` env var (explicit override)
+    1. ``DAOBIDAO_QWEN3_DIR`` env var (explicit override)
     2. ModelScope default cache (production location)
     3. Spike scratch dir (``/tmp/qwen3-asr-spike``, dev machine only)
     """
     roots: list[Path] = []
-    env = os.environ.get("WHISPER_INPUT_QWEN3_DIR")
+    env = os.environ.get("DAOBIDAO_QWEN3_DIR")
     if env:
         roots.append(Path(env))
 
@@ -179,7 +179,7 @@ def qwen3_cache_root() -> Path:
     if root is None:
         pytest.skip(
             f"Qwen3-ASR cache not found. Run `modelscope download "
-            f"--model {_MODELSCOPE_REPO}` or set WHISPER_INPUT_QWEN3_DIR."
+            f"--model {_MODELSCOPE_REPO}` or set DAOBIDAO_QWEN3_DIR."
         )
     return root
 

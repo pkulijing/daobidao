@@ -27,16 +27,16 @@ class CustomBuildHook(BuildHookInterface):
         """将 git commit hash 写入 _commit.txt。"""
         # 源码树路径 / sdist 解包路径
         src_path = (
-            Path(self.root) / "src" / "whisper_input" / "_commit.txt"
+            Path(self.root) / "src" / "daobidao" / "_commit.txt"
         )
         sdist_path = (
-            Path(self.root) / "whisper_input" / "_commit.txt"
+            Path(self.root) / "daobidao" / "_commit.txt"
         )
 
         for existing in (src_path, sdist_path):
             if existing.exists() and existing.read_text(encoding="utf-8").strip():
                 build_data["force_include"][str(existing)] = (
-                    "whisper_input/_commit.txt"
+                    "daobidao/_commit.txt"
                 )
                 return
 
@@ -46,7 +46,7 @@ class CustomBuildHook(BuildHookInterface):
 
         src_path.write_text(commit, encoding="utf-8")
         build_data["force_include"][str(src_path)] = (
-            "whisper_input/_commit.txt"
+            "daobidao/_commit.txt"
         )
         self._written_file = src_path
 
@@ -56,23 +56,23 @@ class CustomBuildHook(BuildHookInterface):
         这些文件在 .gitignore 里（CI 构建产物），
         hatch 默认会跳过，需要 force_include。
 
-        源码树路径: src/whisper_input/assets/macos/
-        sdist 解包路径: whisper_input/assets/macos/
+        源码树路径: src/daobidao/assets/macos/
+        sdist 解包路径: daobidao/assets/macos/
         """
         src_dir = (
-            Path(self.root) / "src" / "whisper_input"
+            Path(self.root) / "src" / "daobidao"
             / "assets" / "macos"
         )
         sdist_dir = (
-            Path(self.root) / "whisper_input"
+            Path(self.root) / "daobidao"
             / "assets" / "macos"
         )
-        for name in ("whisper-input-launcher", "AppIcon.icns"):
+        for name in ("daobidao-launcher", "AppIcon.icns"):
             for d in (src_dir, sdist_dir):
                 path = d / name
                 if path.exists():
                     build_data["force_include"][str(path)] = (
-                        f"whisper_input/assets/macos/{name}"
+                        f"daobidao/assets/macos/{name}"
                     )
                     break
 

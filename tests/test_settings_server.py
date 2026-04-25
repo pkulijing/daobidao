@@ -1,6 +1,6 @@
 """测试设置页面 Web 服务的 REST API。
 
-针对 src/whisper_input/settings_server.py。
+针对 src/daobidao/settings_server.py。
 
 启动一个真实的 SettingsServer 在 127.0.0.1 + 一个临时空闲端口上,用
 stdlib http.client 打请求验证 handler。所有写操作落在 tmp_path 隔离的
@@ -15,8 +15,8 @@ import time
 
 import pytest
 
-from whisper_input import settings_server as ss
-from whisper_input.config_manager import DEFAULT_CONFIG, ConfigManager
+from daobidao import settings_server as ss
+from daobidao.config_manager import DEFAULT_CONFIG, ConfigManager
 
 
 def _free_port() -> int:
@@ -81,7 +81,7 @@ def _request(method: str, host: str, port: int, path: str, body=None):
 
 def test_get_settings_html_substitutes_placeholders():
     html = ss._get_settings_html()
-    assert "Whisper Input" in html
+    assert "Daobidao" in html
     # 占位符全部被替换
     assert "HOTKEY_OPTIONS_PLACEHOLDER" not in html
     assert "HOTKEY_KEY_PLACEHOLDER" not in html
@@ -98,7 +98,7 @@ def test_get_root_returns_html(running_server):
     host, port, _ = running_server
     status, data = _request("GET", host, port, "/")
     assert status == 200
-    assert b"Whisper Input" in data
+    assert b"Daobidao" in data
 
 
 def test_get_api_config_returns_defaults(running_server):
@@ -284,14 +284,14 @@ def test_stt_switch_status_forwards_getter(
 def test_commit_link_points_to_tree(monkeypatch):
     """HTML 里 commit 链接必须是 /tree/<sha>,不能再出现 /commit/<sha>。"""
     monkeypatch.setattr(
-        "whisper_input.settings_server.__commit__",
+        "daobidao.settings_server.__commit__",
         "abc1234" + "0" * 33,
         raising=False,
     )
     # 注意:settings_server 里是在函数体里 import __commit__,所以要 patch
     # 源模块而不是 ss 顶层
     monkeypatch.setattr(
-        "whisper_input.version.__commit__",
+        "daobidao.version.__commit__",
         "abc1234" + "0" * 33,
     )
     html = ss._get_settings_html()
@@ -311,7 +311,7 @@ def test_update_check_disabled_skips_network(running_server, monkeypatch):
     # 把 fetch_latest_version patch 掉,若被调用则记下来
     calls = []
     monkeypatch.setattr(
-        "whisper_input.updater.fetch_latest_version",
+        "daobidao.updater.fetch_latest_version",
         lambda timeout=3.0: calls.append("hit") or "9.9.9",
     )
 
@@ -327,7 +327,7 @@ def test_update_check_enabled_returns_snapshot(running_server, monkeypatch):
     host, port, _mgr = running_server
     # 把 checker 换成我们可控的
     monkeypatch.setattr(
-        "whisper_input.updater.fetch_latest_version",
+        "daobidao.updater.fetch_latest_version",
         lambda timeout=3.0: "9.9.9",
     )
     # server 启动时已经 trigger 过一次 async fetch;等它跑完
@@ -354,7 +354,7 @@ def test_update_apply_invokes_upgrade(running_server, monkeypatch):
         return True, "upgraded to 9.9.9"
 
     monkeypatch.setattr(
-        "whisper_input.settings_server.apply_upgrade", fake_apply
+        "daobidao.settings_server.apply_upgrade", fake_apply
     )
     status, data = _request("POST", host, port, "/api/update/apply")
     assert status == 200
@@ -367,7 +367,7 @@ def test_update_apply_invokes_upgrade(running_server, monkeypatch):
 def test_update_apply_failure_propagates_output(running_server, monkeypatch):
     host, port, _ = running_server
     monkeypatch.setattr(
-        "whisper_input.settings_server.apply_upgrade",
+        "daobidao.settings_server.apply_upgrade",
         lambda timeout=180.0: (False, "pypi unreachable"),
     )
     status, data = _request("POST", host, port, "/api/update/apply")

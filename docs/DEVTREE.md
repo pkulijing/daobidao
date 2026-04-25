@@ -26,7 +26,7 @@ graph TD
   classDef research fill:#e2e3e5,stroke:#6c757d,color:#383d41,font-weight:bold
   classDef epic     fill:#f8f9fa,stroke:#adb5bd,color:#495057,font-weight:bold,font-size:15px
 
-  ROOT["whisper-input"]:::epic
+  ROOT["daobidao"]:::epic
   ROOT --> pd["产品设计"]:::epic
   ROOT --> ea["工程架构"]:::epic
 
@@ -119,12 +119,14 @@ graph TD
     N18["✨ 18 · 国际化i18n"]:::feature
     N21["📦 21 · 一键安装脚本"]:::infra
     N25["✨ 25 · 更新检查与更新触发"]:::feature
+    N29["📦 29 · 改名为daobidao"]:::infra
     N8 ~~~ N13
     N13 ~~~ N14
     N14 ~~~ N17
     N17 ~~~ N18
     N18 ~~~ N21
     N21 ~~~ N25
+    N25 ~~~ N29
   end
 
   subgraph e_test["🔄 自动化测试"]
@@ -147,7 +149,7 @@ graph TD
 
 ## 节点索引
 
-> 最后更新：2026-04-25 | 共 28 轮
+> 最后更新：2026-04-25 | 共 29 轮
 
 | #   | 名称                      | 类型    | 所属 Epic     | 一句话描述                                                                                 |
 | --- | ------------------------- | ------- | ------------- | ------------------------------------------------------------------------------------------ |
@@ -179,6 +181,7 @@ graph TD
 | 26  | Qwen3-ASR 替换 SenseVoice | ✨ 功能 | 流式识别      | 从 SenseVoice 迁移到 Qwen3-ASR int8 ONNX（0.6B/1.7B 可热切换），识别质量从关键词匹配跃迁到原文零错字，为后续流式识别奠基 |
 | 27  | 冷启动优化                | 🏗️ 重构 | 启动性能      | 用 `modelscope.snapshot_download(local_files_only=True)` 跳过 manifest 校验 + 损坏文件兜底重下，cache 命中冷启动从 ~5s 压到 ~2.9s |
 | 28  | Qwen3-ASR 真流式识别       | ✨ 功能 | 流式识别      | 用 prefix-cached re-prefill (策略 E) + marker-anchored rollback 切分实现按住热键边说边出字，每 ~2s 出新字段，与离线 edit distance ≤ 5% |
+| 29  | 改名为daobidao             | 📦 工程 | 集成与分发    | 项目从 whisper-input 改名为 daobidao（叨逼叨），发布 v1.0.0；老包变成转发 shim；macOS/Linux 启动时一次性迁移历史配置/日志/.app/LaunchAgent |
 
 ---
 
@@ -236,7 +239,7 @@ graph TD
 #### 集成与分发
 
 - 状态：已完成
-- 轮次：8, 13, 14, 17, 18, 21, 25
+- 轮次：8, 13, 14, 17, 18, 21, 25, 29
 
 #### 启动性能
 

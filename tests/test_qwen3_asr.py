@@ -16,14 +16,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from whisper_input.stt.qwen3 import Qwen3ASRSTT
+from daobidao.stt.qwen3 import Qwen3ASRSTT
 
 
 @pytest.fixture(scope="module")
 def patched_downloader(qwen3_cache_root: Path):
     """Short-circuit ``download_qwen3_asr`` to the local cache root."""
     with patch(
-        "whisper_input.stt.qwen3.qwen3_asr.download_qwen3_asr",
+        "daobidao.stt.qwen3.qwen3_asr.download_qwen3_asr",
         return_value=qwen3_cache_root,
     ):
         yield
@@ -120,7 +120,7 @@ def test_load_falls_back_when_runner_construction_fails(
     模拟 local_only fast path 拿到了路径但 .onnx 损坏的极罕见场景。
     纯 mock,不触碰真 ONNX / 真下载。
     """
-    from whisper_input.stt.qwen3 import qwen3_asr as mod
+    from daobidao.stt.qwen3 import qwen3_asr as mod
 
     download_calls: list[bool] = []
 
@@ -155,7 +155,7 @@ def test_load_second_runner_failure_propagates(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     """兜底只重试一次;重下后仍失败直接 raise,不无限循环。"""
-    from whisper_input.stt.qwen3 import qwen3_asr as mod
+    from daobidao.stt.qwen3 import qwen3_asr as mod
 
     monkeypatch.setattr(
         mod, "download_qwen3_asr", lambda *a, **kw: tmp_path

@@ -1,10 +1,10 @@
-"""Tests for ``whisper_input.stt.qwen3._prompt.build_prompt``."""
+"""Tests for ``daobidao.stt.qwen3._prompt.build_prompt``."""
 
 from __future__ import annotations
 
 import pytest
 
-from whisper_input.stt.qwen3._prompt import (
+from daobidao.stt.qwen3._prompt import (
     AUDIO_END,
     AUDIO_PAD,
     AUDIO_START,

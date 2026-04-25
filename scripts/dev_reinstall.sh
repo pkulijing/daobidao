@@ -5,12 +5,12 @@
 # 避免反复发 alpha/beta 到 PyPI 再等 CI。直接本地构建 wheel 并 uv tool install。
 #
 # 清理（模拟全新用户）：
-#   - ~/Applications/Whisper Input.app
-#   - ~/Library/LaunchAgents/com.whisper-input.plist
+#   - ~/Applications/Daobidao.app
+#   - ~/Library/LaunchAgents/com.daobidao.plist
 #   - TCC 授权（Accessibility + ListenEvent）
-#   - uv tool 下的 whisper-input 包
+#   - uv tool 下的 daobidao 包
 # 保留（避免重复下载）：
-#   - ~/Library/Application Support/Whisper Input/（配置）
+#   - ~/Library/Application Support/Daobidao/（配置）
 #   - ~/.cache/modelscope/...（模型，~231 MB）
 #   如需一并清理，用 --wipe-all。
 
@@ -30,14 +30,14 @@ if [[ "$(uname)" != "Darwin" ]]; then
     exit 1
 fi
 
-APP_BUNDLE="$HOME/Applications/Whisper Input.app"
-LAUNCH_AGENT="$HOME/Library/LaunchAgents/com.whisper-input.plist"
-VENV_PATH_FILE="$HOME/.config/whisper-input/venv-path"
-CONFIG_DIR="$HOME/Library/Application Support/Whisper Input"
-BUNDLE_ID="com.whisper-input.app"
+APP_BUNDLE="$HOME/Applications/Daobidao.app"
+LAUNCH_AGENT="$HOME/Library/LaunchAgents/com.daobidao.plist"
+VENV_PATH_FILE="$HOME/.config/daobidao/venv-path"
+CONFIG_DIR="$HOME/Library/Application Support/Daobidao"
+BUNDLE_ID="com.daobidao.app"
 
 echo "=========================================="
-echo "  本地构建 + 安装 whisper-input"
+echo "  本地构建 + 安装 daobidao"
 echo "=========================================="
 
 # ── 1. 清理 ───────────────────────────────────────
@@ -45,7 +45,7 @@ echo ""
 echo "[1/4] 清理旧版本..."
 
 if [ -f "$LAUNCH_AGENT" ]; then
-    launchctl bootout "gui/$(id -u)/com.whisper-input" 2>/dev/null || true
+    launchctl bootout "gui/$(id -u)/com.daobidao" 2>/dev/null || true
     rm -f "$LAUNCH_AGENT"
     echo "  ✓ LaunchAgent"
 fi
@@ -61,8 +61,8 @@ echo "  ✓ TCC 授权"
 
 rm -f "$VENV_PATH_FILE"
 
-if uv tool list 2>/dev/null | grep -q "^whisper-input"; then
-    uv tool uninstall whisper-input >/dev/null 2>&1
+if uv tool list 2>/dev/null | grep -q "^daobidao"; then
+    uv tool uninstall daobidao >/dev/null 2>&1
     echo "  ✓ uv tool 包"
 fi
 
@@ -88,7 +88,7 @@ echo ""
 echo "[3/4] 构建 wheel..."
 rm -rf dist/
 uv build
-WHEEL=$(ls dist/whisper_input-*.whl)
+WHEEL=$(ls dist/daobidao-*.whl)
 echo "  $WHEEL"
 
 # ── 4. uv tool install ────────────────────────────
@@ -102,8 +102,8 @@ echo "  完成"
 echo "=========================================="
 echo ""
 echo "下一步："
-echo "  whisper-input --init     # 安装 .app bundle + 下载模型"
-echo "  whisper-input            # 正常启动"
+echo "  daobidao --init     # 安装 .app bundle + 下载模型"
+echo "  daobidao            # 正常启动"
 echo ""
 echo "完全重新来一次（连配置和模型也清）："
 echo "  bash $0 --wipe-all"

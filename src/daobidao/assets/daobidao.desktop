@@ -1,0 +1,15 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Daobidao
+Name[zh_CN]=叨逼叨
+GenericName=Voice Input
+GenericName[zh_CN]=语音输入工具
+Comment=Voice input tool for Linux - hold hotkey to speak, release to type
+Comment[zh_CN]=Linux 语音输入工具 - 按住快捷键说话，松开自动输入
+Exec=daobidao
+Icon=daobidao
+Terminal=false
+Categories=Utility;Accessibility;
+Keywords=voice;speech;input;daobidao;stt;语音;输入;叨逼叨;
+StartupNotify=false

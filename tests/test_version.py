@@ -1,6 +1,6 @@
 """测试 version 模块的 fallback 逻辑。
 
-针对 src/whisper_input/version.py。
+针对 src/daobidao/version.py。
 
 `__version__` 走 importlib.metadata,在 dev 安装下应该等于 pyproject.toml 里
 的版本号; `_read_commit()` 有三条路径(_commit.txt / git / 空),每条都覆盖。
@@ -8,7 +8,7 @@
 
 import subprocess
 
-import whisper_input.version as version_mod
+import daobidao.version as version_mod
 
 
 def test_version_is_non_empty_string():
@@ -23,7 +23,7 @@ def test_read_commit_from_commit_file(tmp_path, monkeypatch):
     fake_commit = "deadbeef" * 5
     (tmp_path / "_commit.txt").write_text(fake_commit, encoding="utf-8")
 
-    # files("whisper_input") / "_commit.txt" 应该返回 tmp_path / "_commit.txt"
+    # files("daobidao") / "_commit.txt" 应该返回 tmp_path / "_commit.txt"
     def fake_files(pkg: str):
         return tmp_path
 

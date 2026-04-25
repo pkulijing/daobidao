@@ -15,7 +15,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from whisper_input.__main__ import WhisperInput
+from daobidao.__main__ import WhisperInput
 
 
 @pytest.fixture
@@ -23,7 +23,7 @@ def wi(monkeypatch):
     """构造一个最小化的 WhisperInput：stt / recorder / overlay 全部 mock。"""
     # 阻止真正的 create_stt 被触发（会尝试 import onnxruntime/modelscope）
     monkeypatch.setattr(
-        "whisper_input.__main__.create_stt_engine",
+        "daobidao.__main__.create_stt_engine",
         lambda cfg: MagicMock(),
     )
     instance = WhisperInput(

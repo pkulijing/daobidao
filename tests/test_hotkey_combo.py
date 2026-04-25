@@ -1,6 +1,6 @@
 """测试热键 300ms combo 检测状态机。
 
-针对 src/whisper_input/backends/hotkey_macos.py 和 hotkey_linux.py。
+针对 src/daobidao/backends/hotkey_macos.py 和 hotkey_linux.py。
 
 两个文件的 HotkeyListener 类几乎对称:macOS 用 pynput Key 对象,Linux 用
 evdev int 键码,但状态机逻辑(_on_hotkey_press / _on_hotkey_release /
@@ -23,7 +23,7 @@ BACKENDS = ["hotkey_macos", "hotkey_linux"]
 
 def _load(name: str):
     return importlib.import_module(
-        f"whisper_input.backends.{name}"
+        f"daobidao.backends.{name}"
     )
 
 

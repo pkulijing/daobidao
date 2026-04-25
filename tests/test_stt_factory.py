@@ -1,4 +1,4 @@
-"""Tests for ``whisper_input.stt.create_stt``."""
+"""Tests for ``daobidao.stt.create_stt``."""
 
 from __future__ import annotations
 
@@ -6,13 +6,13 @@ from unittest.mock import patch
 
 import pytest
 
-from whisper_input.stt import BaseSTT, create_stt
+from daobidao.stt import BaseSTT, create_stt
 
 
 def test_create_qwen3_returns_qwen3_stt():
     # We don't actually load the model — just verify the factory wiring.
     with patch(
-        "whisper_input.stt.qwen3.Qwen3ASRSTT"
+        "daobidao.stt.qwen3.Qwen3ASRSTT"
     ) as mock_cls:
         create_stt("qwen3", {"variant": "1.7B"})
     mock_cls.assert_called_once_with(variant="1.7B")
@@ -20,7 +20,7 @@ def test_create_qwen3_returns_qwen3_stt():
 
 def test_create_qwen3_default_variant():
     with patch(
-        "whisper_input.stt.qwen3.Qwen3ASRSTT"
+        "daobidao.stt.qwen3.Qwen3ASRSTT"
     ) as mock_cls:
         create_stt("qwen3", {})
     mock_cls.assert_called_once_with(variant="0.6B")
@@ -44,7 +44,7 @@ def test_base_stt_is_abstract():
 def test_qwen3_stt_claims_streaming_support():
     """Qwen3ASRSTT 必须把 supports_streaming 翻到 True;__main__ 的
     `_should_stream` 决策依赖这个类变量。"""
-    from whisper_input.stt.qwen3 import Qwen3ASRSTT
+    from daobidao.stt.qwen3 import Qwen3ASRSTT
 
     assert Qwen3ASRSTT.supports_streaming is True
 

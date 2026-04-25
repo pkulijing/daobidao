@@ -18,8 +18,8 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
-from whisper_input.__main__ import WhisperInput
-from whisper_input.stt.base import (
+from daobidao.__main__ import WhisperInput
+from daobidao.stt.base import (
     STREAMING_CHUNK_SAMPLES,
     StreamEvent,
     StreamingKVOverflowError,
@@ -84,13 +84,13 @@ def wi(
 ):
     """构造一个 WhisperInput,用 fake stt + fake recorder。"""
     monkeypatch.setattr(
-        "whisper_input.__main__.create_stt_engine",
+        "daobidao.__main__.create_stt_engine",
         lambda cfg: fake_stt_streaming,
     )
     # 替换 type_text(避免真的写到剪贴板)
     pasted: list[str] = []
     monkeypatch.setattr(
-        "whisper_input.__main__.type_text",
+        "daobidao.__main__.type_text",
         lambda text: pasted.append(text),
     )
 

@@ -48,7 +48,7 @@ def fake_sd(monkeypatch):
 
 
 def _load_terminate():
-    from whisper_input.__main__ import terminate_portaudio
+    from daobidao.__main__ import terminate_portaudio
     return terminate_portaudio
 
 

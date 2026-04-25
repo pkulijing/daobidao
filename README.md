@@ -1,10 +1,17 @@
 **English** | [中文](README.zh-CN.md)
 
-# Whisper Input
+# Daobidao
 
-[![Build](https://github.com/pkulijing/whisper-input/actions/workflows/build.yml/badge.svg)](https://github.com/pkulijing/whisper-input/actions/workflows/build.yml)
-[![codecov](https://codecov.io/gh/pkulijing/whisper-input/branch/master/graph/badge.svg)](https://codecov.io/gh/pkulijing/whisper-input)
-[![PyPI](https://img.shields.io/pypi/v/whisper-input.svg)](https://pypi.org/project/whisper-input/)
+> **🎉 Renamed**: this project used to be called `whisper-input`. Starting
+> with v1.0.0 it has been renamed to `daobidao` (叨逼叨, Chinese onomatopoeia
+> for non-stop talking — fits a voice input tool). The legacy package name
+> still works (`pip install whisper-input` redirects to `daobidao`), but new
+> releases land on the new name. Use `uv tool install daobidao` going forward.
+> See [docs/29-改名为daobidao/SUMMARY.md](docs/29-改名为daobidao/SUMMARY.md).
+
+[![Build](https://github.com/pkulijing/daobidao/actions/workflows/build.yml/badge.svg)](https://github.com/pkulijing/daobidao/actions/workflows/build.yml)
+[![codecov](https://codecov.io/gh/pkulijing/daobidao/branch/master/graph/badge.svg)](https://codecov.io/gh/pkulijing/daobidao)
+[![PyPI](https://img.shields.io/pypi/v/daobidao.svg)](https://pypi.org/project/daobidao/)
 
 Cross-platform voice input tool — hold a hotkey, speak, release to have speech transcribed and typed into the focused window.
 
@@ -38,10 +45,10 @@ Supports **Linux (X11)** and **macOS**.
 On macOS or Linux:
 
 ```bash
-curl -LsSf https://raw.githubusercontent.com/pkulijing/whisper-input/master/install.sh | sh
+curl -LsSf https://raw.githubusercontent.com/pkulijing/daobidao/master/install.sh | sh
 ```
 
-The script interactively picks a language (中文 / English), then installs `uv`, Python 3.12, required system libraries, and `whisper-input` itself. It runs `whisper-input --init` (pre-downloads the ~990 MB Qwen3-ASR 0.6B ONNX model; on macOS also installs `~/Applications/Whisper Input.app`) and finally asks whether to launch the app immediately. It's safe to re-run — already-installed pieces are skipped, and `uv tool install --upgrade` upgrades `whisper-input` to the latest version.
+The script interactively picks a language (中文 / English), then installs `uv`, Python 3.12, required system libraries, and `daobidao` itself. It runs `daobidao --init` (pre-downloads the ~990 MB Qwen3-ASR 0.6B ONNX model; on macOS also installs `~/Applications/Daobidao.app`) and finally asks whether to launch the app immediately. It's safe to re-run — already-installed pieces are skipped, and `uv tool install --upgrade` upgrades `daobidao` to the latest version.
 
 On Linux the script will offer to add the current user to the `input` group (requires `sudo`; takes effect after a logout/login cycle).
 
@@ -56,13 +63,13 @@ On Linux the script will offer to add the current user to the `input` group (req
 brew install portaudio
 
 # Install the tool (--compile-bytecode skips the first-run .pyc compile step)
-uv tool install --compile-bytecode whisper-input
+uv tool install --compile-bytecode daobidao
 
 # One-time setup: install .app bundle + download STT model (~990 MB for Qwen3-ASR 0.6B)
-whisper-input --init
+daobidao --init
 
 # Run
-whisper-input
+daobidao
 ```
 
 **First-run permissions required in System Settings > Privacy & Security:**
@@ -70,7 +77,7 @@ whisper-input
 1. **Accessibility** (for global hotkey listening and text input)
 2. **Microphone** (for voice recording; the system will prompt on first recording)
 
-> **Note**: On first run (or via `whisper-input --init`), the tool installs a minimal `.app` bundle at `~/Applications/Whisper Input.app`. macOS permission dialogs and System Settings entries will show "Whisper Input" — grant Accessibility to that entry. To fully uninstall, run `whisper-input --uninstall` before `uv tool uninstall whisper-input`.
+> **Note**: On first run (or via `daobidao --init`), the tool installs a minimal `.app` bundle at `~/Applications/Daobidao.app`. macOS permission dialogs and System Settings entries will show "Daobidao" — grant Accessibility to that entry. To fully uninstall, run `daobidao --uninstall` before `uv tool uninstall daobidao`.
 
 #### Linux
 
@@ -84,13 +91,13 @@ sudo apt install xdotool xclip pulseaudio-utils libportaudio2 \
 sudo usermod -aG input $USER && newgrp input
 
 # Install the tool (--compile-bytecode skips the first-run .pyc compile step)
-uv tool install --compile-bytecode whisper-input
+uv tool install --compile-bytecode daobidao
 
 # One-time setup: download STT model (~990 MB for Qwen3-ASR 0.6B)
-whisper-input --init
+daobidao --init
 
 # Run
-whisper-input
+daobidao
 ```
 
 **System dependency reference:**
@@ -104,26 +111,26 @@ whisper-input
 | `gir1.2-gtk-3.0` | Recording overlay | GTK 3 typelib for the recording status overlay |
 | `gir1.2-ayatanaappindicator3-0.1` | System tray icon | AppIndicator typelib, runtime dependency of `pystray` on Linux |
 
-On first run, `whisper-input` downloads the Qwen3-ASR ONNX model (~990 MB for the 0.6B default) via `modelscope.snapshot_download` to `~/.cache/modelscope/hub/`. After one successful download, the app is fully offline. You can switch to the 1.7B variant later from the in-app settings page (pulls an additional ~2.4 GB).
+On first run, `daobidao` downloads the Qwen3-ASR ONNX model (~990 MB for the 0.6B default) via `modelscope.snapshot_download` to `~/.cache/modelscope/hub/`. After one successful download, the app is fully offline. You can switch to the 1.7B variant later from the in-app settings page (pulls an additional ~2.4 GB).
 
 #### From Source (Contributors)
 
 ```bash
-git clone https://github.com/pkulijing/whisper-input
-cd whisper-input
+git clone https://github.com/pkulijing/daobidao
+cd daobidao
 bash scripts/setup.sh
-uv run whisper-input
+uv run daobidao
 ```
 
 ## Usage
 
 ```bash
 # Specify hotkey
-whisper-input -k KEY_FN          # macOS: Fn/Globe key
-whisper-input -k KEY_RIGHTALT    # Linux: Right Alt key
+daobidao -k KEY_FN          # macOS: Fn/Globe key
+daobidao -k KEY_RIGHTALT    # Linux: Right Alt key
 
 # More options
-whisper-input --help
+daobidao --help
 ```
 
 A browser settings page opens automatically on startup; you can also access it via the system tray icon.
@@ -167,18 +174,18 @@ Config file `config.yaml`, also editable via the browser settings UI:
 
 ## Technical Architecture
 
-The project uses src layout with all Python code under `src/whisper_input/`, installable as a standard package. The entry point is the `whisper-input` console script (equivalent to `python -m whisper_input`).
+The project uses src layout with all Python code under `src/daobidao/`, installable as a standard package. The entry point is the `daobidao` console script (equivalent to `python -m daobidao`).
 
 ```
-Hold hotkey -> HotkeyListener (whisper_input.backends) -> AudioRecorder (sounddevice)
+Hold hotkey -> HotkeyListener (daobidao.backends) -> AudioRecorder (sounddevice)
 Release     -> stt.Qwen3ASRSTT (onnxruntime) -> InputMethod -> Text typed into focused window
 ```
 
-Platform backends (`whisper_input.backends`) auto-select at runtime via `sys.platform`:
+Platform backends (`daobidao.backends`) auto-select at runtime via `sys.platform`:
 - **Linux**: evdev for keyboard events + xclip/xdotool clipboard paste
 - **macOS**: pynput global keyboard listener + pbcopy/pbpaste + Cmd+V paste
 
-STT inference (`whisper_input.stt.qwen3`):
+STT inference (`daobidao.stt.qwen3`):
 - Model: Qwen3-ASR ONNX int8 from `zengshuishui/Qwen3-ASR-onnx` on ModelScope, downloaded via `modelscope.snapshot_download` to `~/.cache/modelscope/hub/`. Two variants side-by-side (0.6B / 1.7B), switchable via the settings page
 - Runtime: Microsoft official `onnxruntime`, no torch / transformers dependency
 - 3-stage pipeline: `conv_frontend.onnx` → `encoder.int8.onnx` → `decoder.int8.onnx` (28-layer KV-cache autoregressive decoder)

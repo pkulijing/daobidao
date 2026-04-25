@@ -31,9 +31,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from whisper_input.__main__ import WhisperInput
-from whisper_input.stt.qwen3 import Qwen3ASRSTT
-from whisper_input.stt.qwen3._feature import SAMPLE_RATE
+from daobidao.__main__ import WhisperInput
+from daobidao.stt.qwen3 import Qwen3ASRSTT
+from daobidao.stt.qwen3._feature import SAMPLE_RATE
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "zh.wav"
 
@@ -181,13 +181,13 @@ def test_streaming_via_full_whisperinput_pipeline(
 
     # 把 create_stt_engine 替成返回真 STT(避免它再加载一次)
     monkeypatch.setattr(
-        "whisper_input.__main__.create_stt_engine",
+        "daobidao.__main__.create_stt_engine",
         lambda cfg: real_stt,
     )
     # 捕获所有 type_text 调用
     paste_log: list[str] = []
     monkeypatch.setattr(
-        "whisper_input.__main__.type_text",
+        "daobidao.__main__.type_text",
         lambda text: paste_log.append(text),
     )
 

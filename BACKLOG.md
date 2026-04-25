@@ -1,4 +1,4 @@
-# Whisper Input — Backlog
+# Daobidao — Backlog
 
 未来开发项清单。**本文件是权威来源**，取代各轮 `docs/N-*/SUMMARY.md` 里 "后续 TODO" 段的跨轮追踪职责 —— 那些段落继续保留，但只记录当轮发现的新线索，发现的新想法要立刻同步到这里。
 
@@ -135,7 +135,7 @@
 **动机**:26 轮上线了"识别模型"下拉(0.6B / 1.7B)+ 热切换,但只照顾了"两个模型都已下载"的稳定态。实际用户路径有两个坑:
 
 1. **1.7B 第一次被点到时**,后台 `Qwen3ASRSTT("1.7B").load()` 会串行跑 `modelscope.snapshot_download`,在中国带宽下一次拉 ~2.4 GB,**保守估计 5-10 分钟**。设置页唯一反馈是"切换中..."的 toast —— 用户不知道"还要等多久"、"有没有在进,下"、"能不能取消",也可能误以为程序卡死把它杀掉,导致 cache 半成品,下次再 load 就爆
-2. **用户想先下模型再用**:现在没有任何入口,只能硬切一次过去等。命令行 `whisper-input --init` 只下默认的 0.6B,下不了 1.7B(`--init` 读 config 里的 `qwen3.variant`,默认 0.6B)
+2. **用户想先下模型再用**:现在没有任何入口,只能硬切一次过去等。命令行 `daobidao --init` 只下默认的 0.6B,下不了 1.7B(`--init` 读 config 里的 `qwen3.variant`,默认 0.6B)
 
 **希望达到**:
 
@@ -162,7 +162,7 @@
 - **并发控制**:同时允许两个 variant 一起下? 还是 serialize? 前者节省总时间但会抢带宽互相拖垮,后者用户体验更稳 —— 倾向 serialize,一次只下一个
 - **1.7B 下载过程中应用崩了**:下次启动要能识别到 cache 里的半成品并提示用户"上次下载未完成,重新下?",不然永远 stuck
 - **进度条数据来源**:如果绕开 modelscope 直接 HTTP 下载,断点续传、multi-part、镜像 failover 等功能就都自己写,是 scope 膨胀项。现实妥协:第一版**不做断点续传**,中断就从头来
-- **`--init` 命令行也该支持选 variant**:`whisper-input --init --variant 1.7B`,不阻塞这一轮但可以顺手做
+- **`--init` 命令行也该支持选 variant**:`daobidao --init --variant 1.7B`,不阻塞这一轮但可以顺手做
 
 **scope**:中。后端 ~150 行(含 DownloadManager + 两条端点 + spike 验证) + 前端 ~80 行(状态渲染 + 进度轮询 + 按钮态切换)+ 3 份 locale 各 6-8 条新字符串。**关键前置是 modelscope 是否暴露进度回调的 spike**,半小时内能验明;如果不暴露需要绕开 modelscope 自己 HTTP 下载,scope 再翻 50%。优先级**高** —— 这是 26 轮的直接遗留,用户视角看就是"买了个坏的下拉"。
 
@@ -174,18 +174,18 @@
 
 **动机**：调试时遇到过上次没退出干净的僵尸进程，导致新启动的实例行为异常（热键被老进程抢走、端口被占、settings_server 起不来等）。用户手动 `ps | grep` 再 kill 太繁琐。
 
-**希望达到**：启动流程里加一个前置步骤 —— 检测是否已有 whisper-input 实例在跑，有就干掉老的，再继续启动新的。用户感知到的就是"双击启动 = 重启"。
+**希望达到**：启动流程里加一个前置步骤 —— 检测是否已有 daobidao 实例在跑，有就干掉老的，再继续启动新的。用户感知到的就是"双击启动 = 重启"。
 
 **候选方向**：
 
 - **端口探测**：`settings_server` 已经绑了一个独占端口，启动时先 `connect()` 探一下。占用 → 通过 `lsof -i :<port>` 或 `psutil.net_connections()` 拿 PID → SIGTERM → 等 1-2 秒 → SIGKILL 兜底。副作用最小，因为端口是本应用独占的
-- **PID 文件**：`~/.cache/whisper-input/whisper-input.pid`，启动时读取 + `os.kill(pid, 0)` 探活 + 校对 `psutil.Process(pid).cmdline()` 防 PID 复用误杀
+- **PID 文件**：`~/.cache/daobidao/daobidao.pid`，启动时读取 + `os.kill(pid, 0)` 探活 + 校对 `psutil.Process(pid).cmdline()` 防 PID 复用误杀
 - **单实例锁**（`fcntl.flock`）：最干净的判定，但"拿不到锁后是 kill 老的还是退出"仍要自己决策，等于把问题推后
 - **健康探测 + 强制 kill 组合**：PID 存活不等于状态正常（僵尸进程的典型症状就是"进程在但热键死了"）。更稳的做法是端口探测到后，HTTP ping 一下 settings_server 的 `/health`（得先加），3 秒无响应就当僵尸处理
 
 **风险 / 注意点**：
 
-- macOS 下经 `Whisper Input.app` launcher 启动时，cmdline 和 `uv run whisper-input` 不一样，识别逻辑要同时覆盖两种
+- macOS 下经 `Daobidao.app` launcher 启动时，cmdline 和 `uv run daobidao` 不一样，识别逻辑要同时覆盖两种
 - kill 老实例的时机要在 "绑端口 / 注册热键" 之前，否则自己会被自己的检测逻辑误伤
 - 用户在两个 shell 里手动各起一个做对比调试的场景会被打断 —— 可以加一个 `--allow-multiple` flag 兜底
 
@@ -245,7 +245,7 @@
 
 **候选方向**（ROI 高到低）：
 
-- **`SessionOptions.optimized_model_filepath` 落盘**（首选）：ORT 原生支持把 graph optimization 的产物（算子融合、常量折叠后）序列化到磁盘。第一次跑 1.5s，之后 `InferenceSession` 直接 load 优化图，跳过所有 optimization pass。社区报告省 30-60%。落盘位置 `~/.cache/whisper-input/ort_cache/{variant}/{conv,encoder,decoder}.opt.onnx`，不能写进 modelscope cache（只读语义）
+- **`SessionOptions.optimized_model_filepath` 落盘**（首选）：ORT 原生支持把 graph optimization 的产物（算子融合、常量折叠后）序列化到磁盘。第一次跑 1.5s，之后 `InferenceSession` 直接 load 优化图，跳过所有 optimization pass。社区报告省 30-60%。落盘位置 `~/.cache/daobidao/ort_cache/{variant}/{conv,encoder,decoder}.opt.onnx`，不能写进 modelscope cache（只读语义）
 - **subprocess 预编译**：下载完模型后立刻起子进程跑一轮 session 构造把 opt 图 bake 出来，用户视角没有"首次慢、后续快"的不一致。代价是多 100-150 行流水线 + bake 中断兜底
 - **multiprocessing 并行构造**：`ProcessPoolExecutor` 绕 GIL，理论 3× speedup。但 `InferenceSession` 不能跨进程 pickle 回主进程，整个架构要重写，scope 爆炸，不推荐
 

@@ -1,7 +1,7 @@
 #!/bin/bash
-# 编译 Whisper Input macOS launcher (universal binary: arm64 + x86_64)
+# 编译叨逼叨 macOS launcher (universal binary: arm64 + x86_64)
 #
-# 产物输出到 src/whisper_input/assets/macos/，随 wheel 分发。
+# 产物输出到 src/daobidao/assets/macos/，随 wheel 分发。
 # CI 和本地开发均使用此脚本。
 #
 # 用法: bash launcher/macos/build.sh
@@ -12,8 +12,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 SRC="$SCRIPT_DIR/main.m"
-OUT_DIR="$REPO_ROOT/src/whisper_input/assets/macos"
-OUT="$OUT_DIR/whisper-input-launcher"
+OUT_DIR="$REPO_ROOT/src/daobidao/assets/macos"
+OUT="$OUT_DIR/daobidao-launcher"
 
 mkdir -p "$OUT_DIR"
 
@@ -33,7 +33,7 @@ echo "[build] 完成: $OUT ($(du -h "$OUT" | cut -f1))"
 file "$OUT"
 
 # 同时生成 icns 图标
-PNG="$REPO_ROOT/src/whisper_input/assets/whisper-input.png"
+PNG="$REPO_ROOT/src/daobidao/assets/daobidao.png"
 ICNS="$OUT_DIR/AppIcon.icns"
 if [ -f "$PNG" ]; then
     echo "[build] 生成 AppIcon.icns..."

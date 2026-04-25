@@ -1,4 +1,4 @@
-"""Tests for ``whisper_input.stt.qwen3._feature``.
+"""Tests for ``daobidao.stt.qwen3._feature``.
 
 The golden test compares our numpy-only ``log_mel_spectrogram`` output to a
 frozen snapshot produced by ``transformers.WhisperFeatureExtractor`` on
@@ -18,7 +18,7 @@ import numpy as np
 import pytest
 import soundfile as sf
 
-from whisper_input.stt.qwen3._feature import (
+from daobidao.stt.qwen3._feature import (
     HOP_LENGTH,
     N_FFT,
     N_MELS,

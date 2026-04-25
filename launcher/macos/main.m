@@ -1,19 +1,19 @@
 /*
- * Whisper Input — macOS Native Launcher
+ * Daobidao — macOS Native Launcher
  *
  * 极简 Objective-C 二进制，在自身进程内加载 Python 解释器运行
- * whisper_input。macOS TCC 权限归属于本二进制（而非 python3），
- * 从而在系统设置中显示 "Whisper Input" 而非 "python3.12"。
+ * daobidao。macOS TCC 权限归属于本二进制（而非 python3），
+ * 从而在系统设置中显示 "Daobidao" 而非 "python3.12"。
  *
  * 工作流程：
  *   1. 初始化 NSApplication（让 macOS 认为是正常 app）
- *   2. 读取 venv 配置（~/.config/whisper-input/venv-path）
+ *   2. 读取 venv 配置（~/.config/daobidao/venv-path）
  *   3. 从 pyvenv.cfg 解析 base Python prefix
  *   4. dlopen(libpython3.12.dylib)
  *   5. Py_SetPythonHome → Py_Initialize → 设置 sys.path → 运行 main()
  *
  * 编译：
- *   clang -o whisper-input main.m -framework Cocoa -ldl -fobjc-arc
+ *   clang -o daobidao main.m -framework Cocoa -ldl -fobjc-arc
  */
 
 #import <Cocoa/Cocoa.h>
@@ -95,21 +95,21 @@ static void run_python(int argc, char *argv[]) {
         return;
     }
     snprintf(config_dir, sizeof(config_dir),
-             "%s/.config/whisper-input/venv-path", home);
+             "%s/.config/daobidao/venv-path", home);
 
     char venv[PATH_MAX];
     if (!read_first_line(config_dir, venv, sizeof(venv))) {
         fprintf(stderr,
                 "[launcher] 无法读取 venv 路径: %s\n"
-                "[launcher] 请先运行: whisper-input --install-app\n",
+                "[launcher] 请先运行: daobidao --install-app\n",
                 config_dir);
         /* 弹对话框提示用户 */
         dispatch_async(dispatch_get_main_queue(), ^{
             NSAlert *alert = [[NSAlert alloc] init];
-            alert.messageText = @"Whisper Input";
+            alert.messageText = @"叨逼叨";
             alert.informativeText =
                 @"未找到 Python 环境配置。\n"
-                 "请在终端运行：whisper-input --install-app";
+                 "请在终端运行：daobidao --install-app";
             [alert addButtonWithTitle:@"好"];
             [alert runModal];
             [NSApp terminate:nil];
@@ -180,11 +180,11 @@ static void run_python(int argc, char *argv[]) {
     char code[4096];
     snprintf(code, sizeof(code),
         "import sys, os, site\n"
-        "os.environ['_WHISPER_INPUT_BUNDLE'] = '1'\n"
+        "os.environ['_DAOBIDAO_BUNDLE'] = '1'\n"
         "venv = '%s'\n"
         "sp = os.path.join(venv, 'lib', 'python3.12', 'site-packages')\n"
         "site.addsitedir(sp)\n"
-        "from whisper_input.__main__ import main\n"
+        "from daobidao.__main__ import main\n"
         "main()\n",
         venv);
 

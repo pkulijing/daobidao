@@ -1,4 +1,4 @@
-"""Tests for ``whisper_input.stt.qwen3._onnx_runner.Qwen3ONNXRunner``.
+"""Tests for ``daobidao.stt.qwen3._onnx_runner.Qwen3ONNXRunner``.
 
 Uses the real 0.6B model from the ``qwen3_0_6b_model_dir`` session fixture;
 skips when the cache is absent.
@@ -12,12 +12,12 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
-from whisper_input.stt.qwen3._feature import (
+from daobidao.stt.qwen3._feature import (
     N_MELS,
     log_mel_spectrogram,
     pad_or_trim,
 )
-from whisper_input.stt.qwen3._onnx_runner import Qwen3ONNXRunner
+from daobidao.stt.qwen3._onnx_runner import Qwen3ONNXRunner
 
 
 @pytest.fixture(scope="module")

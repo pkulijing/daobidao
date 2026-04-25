@@ -49,7 +49,7 @@ def fake_sd(monkeypatch):
     每次 InputStream() 构造都记录最近一个实例,测试可以通过 ``last_stream``
     属性拿到它来手动 fire callback。
     """
-    from whisper_input import recorder as recorder_mod
+    from daobidao import recorder as recorder_mod
 
     instances: list[FakeInputStream] = []
 
@@ -68,7 +68,7 @@ def fake_sd(monkeypatch):
 def test_start_streaming_invokes_on_chunk_with_float32_1d(fake_sd):
     """sd callback 的 int16 (frames, channels) 数据应被转换成 float32 1D。"""
     _fake, instances = fake_sd
-    from whisper_input.recorder import AudioRecorder
+    from daobidao.recorder import AudioRecorder
 
     rec = AudioRecorder(sample_rate=16000, channels=1)
 
@@ -95,7 +95,7 @@ def test_start_streaming_invokes_on_chunk_with_float32_1d(fake_sd):
 def test_on_level_called_in_streaming_mode(fake_sd):
     """音量浮窗回调在流式模式下也应工作(on_level 两种模式共用)。"""
     _fake, instances = fake_sd
-    from whisper_input.recorder import AudioRecorder
+    from daobidao.recorder import AudioRecorder
 
     rec = AudioRecorder()
     levels: list[float] = []
@@ -112,7 +112,7 @@ def test_on_level_called_in_streaming_mode(fake_sd):
 def test_stop_streaming_closes_stream(fake_sd):
     """stop_streaming 会调 underlying stream 的 stop + close。"""
     _fake, instances = fake_sd
-    from whisper_input.recorder import AudioRecorder
+    from daobidao.recorder import AudioRecorder
 
     rec = AudioRecorder()
     rec.start_streaming(on_chunk=lambda _c: None)
@@ -127,7 +127,7 @@ def test_stop_streaming_closes_stream(fake_sd):
 def test_start_streaming_noop_if_already_recording(fake_sd):
     """按住 + 流式模式已启动时,再调 start_streaming 应是 no-op。"""
     _fake, instances = fake_sd
-    from whisper_input.recorder import AudioRecorder
+    from daobidao.recorder import AudioRecorder
 
     rec = AudioRecorder()
     rec.start_streaming(on_chunk=lambda _c: None)
@@ -138,7 +138,7 @@ def test_start_streaming_noop_if_already_recording(fake_sd):
 def test_stop_streaming_noop_if_not_recording(fake_sd):
     """没在录音时调 stop_streaming 应无副作用(不崩)。"""
     _fake, _ = fake_sd
-    from whisper_input.recorder import AudioRecorder
+    from daobidao.recorder import AudioRecorder
 
     rec = AudioRecorder()
     rec.stop_streaming()  # 不应该崩
@@ -147,7 +147,7 @@ def test_stop_streaming_noop_if_not_recording(fake_sd):
 def test_accumulate_mode_unchanged_by_new_fields(fake_sd):
     """累积模式 start/stop 的旧行为不因 28 轮变更受影响。"""
     _fake, instances = fake_sd
-    from whisper_input.recorder import AudioRecorder
+    from daobidao.recorder import AudioRecorder
 
     rec = AudioRecorder()
     rec.start()  # 累积模式
@@ -164,7 +164,7 @@ def test_accumulate_mode_unchanged_by_new_fields(fake_sd):
 def test_streaming_mode_does_not_keep_frames(fake_sd):
     """流式模式下 callback 不应往 _frames buffer 里塞数据(以免 stop() 生成 WAV)。"""
     _fake, instances = fake_sd
-    from whisper_input.recorder import AudioRecorder
+    from daobidao.recorder import AudioRecorder
 
     rec = AudioRecorder()
     rec.start_streaming(on_chunk=lambda _c: None)
