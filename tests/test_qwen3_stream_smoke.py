@@ -62,6 +62,15 @@ class FakeStreamingRecorder:
         self.on_level = None
         self._on_chunk = None
         self.is_recording = False
+        # 32 轮:WhisperInput 启动时调 set_stream_status_callback,_do_key_press
+        # 调 probe()。这条 fake 走流式 happy path,probe 永远成功。
+        self._stream_status_cb = None
+
+    def probe(self, timeout: float = 0.2) -> None:
+        return None
+
+    def set_stream_status_callback(self, cb) -> None:
+        self._stream_status_cb = cb
 
     def start(self):
         raise AssertionError("流式路径不应该调到 start()")
