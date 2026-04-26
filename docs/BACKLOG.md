@@ -15,7 +15,7 @@
 - [识别能力](#识别能力)
   - [中英混杂 / 专业词汇的识别后处理](#中英混杂--专业词汇的识别后处理)
 - [UI/UX 体验](#uiux-体验)
-  - [录音时实时检测麦克风离线](#录音时实时检测麦克风离线)
+  - [跟随系统默认输入设备切换](#跟随系统默认输入设备切换)
   - [流式 preview 浮窗显示 pending](#流式-preview-浮窗显示-pending)
   - [STT 模型按需可视化下载 + 已下载状态感知](#stt-模型按需可视化下载--已下载状态感知)
   - [流式 worker 落后于音频时的 backpressure 提示](#流式-worker-落后于音频时的-backpressure-提示)
@@ -65,58 +65,50 @@
 
 ## UI/UX 体验
 
-### 录音时实时检测麦克风离线
+### 跟随系统默认输入设备切换
 
-> ✅ **32 轮已落地一部分**(`docs/32-录音麦克风离线检测/`):
->
-> - Linux 上用 `pactl list sources` 解析 jack-detect 端口状态作为 probe 唯一权威 —— 因为 sounddevice / PortAudio 在 PipeWire 上看到的永远是虚拟 default,物理拔了麦也看不出来
-> - 浮窗错误态(红色药丸 + 麦克风斜线,2.5s 自动 hide)+ 5s 去抖
-> - 完整测试覆盖(290 用例全过)
->
-> **下面"原始动机"保留作背景**;**仍待做的两条**:
->
-> **A. macOS 替代 query_devices**:32 轮 macOS 仍走 `sd.query_devices`,在 MacBook(内置麦永远在)主流场景可靠;但 Mac mini / Mac Pro 等无内置麦的桌面机用户拔 USB 麦后 CoreAudio 会返回 `CADefaultDeviceAggregate-xxxx-x` 占位设备,跟 PipeWire 同样的"虚拟 default 欺骗",probe 通过 → 录到 0 字节 → 幻觉 token。32 轮没 Mac 测试机不修。候选:`system_profiler SPAudioDataType`(系统自带 shell,跟 pactl 同位置,**首选**)/ `pyobjc-framework-CoreAudio` 调 `AudioObjectGetPropertyData(kAudioHardwarePropertyDevices)`(原生最准但要加依赖)。**优先级:中** —— 真有 Mac 用户撞上才做。
->
-> **B. 录音中途断开监控**:32 轮的 callback 连续 5 次 `input_overflow` 升级 device_lost 在 PipeWire 上**完全失效** —— 拔麦后 PipeWire 给的是干净静音流,无任何 status flag。"按住录音 5s 中途拔耳机"这一次仍会录到 5s 静音 → STT 跑一遍 → paste 空字符串/幻觉。当前降级:用户下次按热键时 probe(pactl)兜底。候选:在 Linux 起 daemon 线程,录音期间每 ~500ms 调一次 pactl 看端口可用性,翻 false 时通过 `_event_queue` 升级 device_lost(复用已有的 `_handle_device_lost`)。**优先级:中**。
+**动机**：daobidao 启动后用户在系统设置里切换默认输入设备(如插上 USB 麦后切过去),**daobidao 不会跟着切** —— 实际录音和设置页的麦克风列表都还在用启动那一刻的设备。重启程序就能识别到新默认设备,确认是缓存陈旧问题。
 
-**动机**(32 轮立项时记录):23 轮在设置页加了**被动式**麦克风检测(用户主动点"检测"才知道有没有麦克风、音质如何),但**主流程录音时**还是机械执行 —— 用户在设置页能看到"麦克风没了",按下热键说话却得不到任何反馈,程序照常 paste 一段空字符串(或更糟,Qwen3-ASR 对空白输入偶尔会幻觉出"嗯"、"谢谢观看"之类的弱信号 token),用户得反复试才意识到是麦克风问题。
+**根因**(已查证,不是我们用错):
 
-典型触发链:
+- PortAudio 在 `Pa_Initialize()` 那一刻 snapshot 系统默认设备,之后 `Pa_GetDefaultDevice` / `sd.default.device[0]` 永远返回那个缓存值,系统切默认时**不刷新**
+- PortAudio 上游 [issue #615](https://github.com/PortAudio/portaudio/issues/615) collaborator RossBencina 亲口确认这是设计行为:*"Pa_GetDefaultDevice would only be updated after a refresh (or after calling Terminate/Initialize)"*
+- HotPlug API(带 device-changed 回调)在 [HotPlug wiki](https://github.com/PortAudio/portaudio/wiki/HotPlug) 设计了多年,**至今未合进 main**
+- python-sounddevice 维护者在 [issue #516](https://github.com/spatialaudio/python-sounddevice/issues/516) 明确推荐用 `sd._terminate(); sd._initialize()` 作为 workaround
+- [bastibe/SoundCard](https://github.com/bastibe/SoundCard/blob/master/soundcard/coreaudio.py) 库直接绕开 PortAudio,在 macOS 上 ctypes 调 CoreAudio `AudioObjectGetPropertyData(kAudioHardwarePropertyDefaultInputDevice)` 拿实时默认设备,无缓存
 
-- 蓝牙耳机休眠断连 / USB 麦拔出 / 某次系统更新后默认输入设备改了
-- macOS 切换到外接显示器时音频路由 reset
-- Linux PipeWire / PulseAudio 重启后 device index 变化
+**目标状态**:用户切了系统默认输入后,**打开 daobidao 设置页一次** → 设置页列表正确显示新设备 → 之后按热键录音自动用新设备。无需重启程序、无需每次录音都做检测。
 
-**希望达到**:
+**方案(极简版)**:
 
-- **录音开始前**(按下热键瞬间):快速校验当前默认输入设备还在 → 不在则**不进入录音状态**,浮窗或托盘 / 通知里提示"麦克风离线",松开热键不 paste
-- **录音过程中**:如果设备中途断开(`sounddevice` 会抛 `PortAudioError` 或回调 status 带 input overflow / device unavailable 标志),**立即终止录音**并以同样方式提示用户,不让 paste 继续走
-- 提示文案做成可关闭/不打扰(连续断开时不刷屏)
-- **不引入新的运行时依赖** —— `sounddevice` 已经够用
+1. 设置页"麦克风检测"卡片**打开时**调一次 ctypes CoreAudio `AudioObjectGetPropertyData(kAudioHardwarePropertyDefaultInputDevice)` 拿实时默认 device ID,匹配 `sd.query_devices()` 列表里同名设备拿到 PortAudio 的 device index
+2. 把这个 index 写进**进程级全局 cache**(比如 `WhisperInput.current_input_device` 或 config_manager 里的 runtime 字段)
+3. `recorder.py` 的 `sd.InputStream(...)` 改成**显式传 `device=cache_index`**,不再依赖 PortAudio 自己挑默认
+4. 设置页 `_handle_audio_devices` 的 `is_default` 判断也读这个 cache,跟实际录音保持一致
 
-**候选方向**(都没深入验证,真做时按需 spike):
+**显式不做**(用户明确反对):
 
-- **录音前快速 probe**:`AudioRecorder.start_recording()` 进 `sd.InputStream` 之前先调一次 `sd.query_devices(kind="input")` 或 `sd.default.device`,拿不到 / index 为 -1 → 直接抛 `MicUnavailableError`,`WhisperInput` 捕获后走"提示但不录音"路径。**最简版,单次开销 < 1ms**
-- **InputStream 回调 status 监听**:`sd.InputStream(callback=...)` 的 callback 第三个参数是 `CallbackFlags`,设备消失时会带 `input_underflow` / `input_overflow`,某些后端还会把 stream 推进 `aborted` 状态。在 callback 里检测到异常 flag → 通过 `threading.Event` 通知主控停止录音 + 出提示。**比 probe 强**:能抓到"开始时正常,中途拔掉"的情况
-- **macOS 走 `AVAudioSession` / Linux 走 PipeWire 的 device-change 事件订阅**:更准但更重,要写两套平台代码,跟当前"`sounddevice` 一把梭"的简洁风格冲突,**不优先**
-- **提示通道**:复用现有浮窗(加一个"❗ 麦克风离线"状态文案) + 系统通知(macOS `osascript display notification` / Linux `notify-send`)二选一。浮窗成本最低且跟现有视觉风格一致
+- **每次按热键时刷新设备列表** —— 用户认为这是"每次录音前确保对"的过度防御性写法,担心一旦刷新逻辑出 bug 就**每次录音都挂**,影响范围不可控。倾向"打开设置页时刷一次"的范围更可控
+
+**候选 v2(锦上添花,不属于本轮)**:
+
+- macOS 注册 CoreAudio property listener(`AudioObjectAddPropertyListener` 监听 `kAudioHardwarePropertyDefaultInputDevice`),系统切默认时收回调自动刷新全局 cache → 用户不打开设置页也能跟着切。~50 行 ctypes,无新依赖
+- Linux 走 PipeWire / PulseAudio 的 device-change 事件,更准但跟当前 pactl 主动查的风格冲突,不优先
 
 **风险 / 注意点**:
 
-- `sd.query_devices()` 在某些 Linux 配置下会阻塞几十 ms(冷启动 PulseAudio query),**不要在热键回调线程同步调** —— 22 轮专门修过热键回调死锁。如果走 probe 路径,probe 必须在录音子线程里跑,失败时通过 event 回报给主控
-- **回调里 status flag 的语义跨平台不一致**:macOS / Linux / 不同 PortAudio 版本对"设备消失"的报告方式可能不同。需要在两个平台各拔一次实测验证
-- **"中途断开后 stop 流"** 在某些 PortAudio 版本里会 hang(类似 24 轮 CoreAudio 死锁),要带超时兜底
-- **频繁断连场景的去抖**:如果蓝牙耳机抖动每秒断连恢复,提示不能每次都弹。设个最小间隔(比如 5s 内只提示一次)
-- **跟 23 轮设置页麦克风检测的关系**:运行时检测到离线时,提示文案里附一句"打开设置页检测麦克风"做引导,把两轮工作串起来
-- **空白音频幻觉是另一个问题**(23 轮 SUMMARY 局限性 #1):麦克风**在线但用户没说话**时,Qwen3-ASR 仍可能幻觉。本条**不解决幻觉**,只解决"设备离线"。幻觉那条值得单独开一个 backlog(RMS 阈值 / VAD / 静音过滤)
+- **Linux 路径未实测**:推测 PipeWire/PulseAudio 因为有"虚拟 default source"层,系统切默认会自动 reroute 同一个 device → daobidao 应该自然跟着走。但裸 ALSA 没有这层,可能跟 macOS 同病。本轮做完**必须在 Linux 接两个麦实测**:启动时选 A → 系统切到 B → 看实际录音和设置页是否跟着。如果 PipeWire 真无缝,就只在 macOS 路径加 ctypes 刷新逻辑;如果 Linux 也中,沿用 32 轮 pactl 路径加一条"查实时 default source"
+- **Cache 失效场景**:如果用户在打开设置页之后又切了一次麦,cache 又陈旧了。但这是用户明确接受的代价(直觉上"切了麦再开一次设置页"是合理操作)
+- **device index 漂移**:`sd.query_devices()` 返回的 index 在设备热插拔后可能变化(原 index 0 的麦拔了,新插的占了 index 0)。Cache 里存 index 不存 name 的话,可能指向错的设备。**改成存 name 更稳**,录音前用 name 反查当前 index
+- **CoreAudio device ID → PortAudio index 的映射**:CoreAudio 给的是 `AudioObjectID`(uint32),PortAudio 给的是 host-api 内部 index,两者**不直接互通**。需要拿 CoreAudio 的 device ID 反查设备 name(再一次 `AudioObjectGetPropertyData` + `kAudioObjectPropertyName`),然后在 `sd.query_devices()` 列表里按 name 匹配。代码模式跟 SoundCard 一致
 
 **scope**:小到中。
 
-- 只做"录音前 probe + 浮窗提示" → ~50 行 + 浮窗加一个 error 状态 + 三语 locale 各 2-3 条新字符串,**半天能落地**
-- 加"InputStream callback status 监控 + 中途断开处理" → 再加 ~50 行 + 两平台实测验证,**多半天**
-- macOS/PipeWire device-change 事件订阅那条**不在本轮 scope** ,真要做单开一轮
+- macOS 路径:ctypes 调 CoreAudio 拿实时默认 + name 反查 + match PortAudio index ~50 行 + recorder/settings_server 改成显式传 device ~20 行 + 测试 ~50 行 → 半天到一天
+- Linux 实测验证(可能不需要改代码):接两个 USB 麦或 USB + 内置实测,~半小时
+- v2 的 CoreAudio listener 不在本轮 scope
 
-**优先级**:中偏高 —— 用户主动报的痛点,影响信任感(用户不知道是程序坏了还是自己机器坏了)。建议先做 probe 那一档(最小可行),实测一段时间再决定要不要上中途断开监控。
+**优先级**:中 —— 用户原话"没人天天切默认麦",真触发的频率低。但触发时影响**所有 macOS 用户**(不需要 Mac mini / Studio,普通 MacBook 插 USB 麦就能撞上),修复价值高。可以挂在那里等想动手时再开一轮,不阻塞主流程。
 
 ---
 
@@ -396,3 +388,5 @@
 - **首次模型下载进度 UI**（14 轮 SUMMARY 局限性 #3）—— 实测下载速度已经够快（ModelScope 国内 CDN 秒级），用户痛点不明显，不值得做
 - **Linux 实机验证**（14 轮 SUMMARY 局限性 #4）—— 已在干净 Ubuntu 上手动验证通过
 - **跨平台 Pythonic overlay 统一代码**（16 轮遗留）—— 视觉已在 16 轮对齐（微信输入法风格深蓝药丸），双份原生实现（GTK3+Cairo / AppKit）维持现状。Tkinter 与 pystray 主线程冲突、子进程方案引入退出清理复杂度，真要统一得换 Tauri 这类方案全面接管 UI 层，不是 overlay 一个模块的事，当前版本满意，不再追
+- **录音时实时检测麦克风离线 - macOS 替代 query_devices**（32 轮遗留 A）—— 32 轮 macOS 仍走 `sd.query_devices`，MacBook（内置麦永远在）主流场景可靠；Mac mini / Studio / Pro 等无内置麦的桌面机用户拔 USB 麦后 CoreAudio 会留 `CADefaultDeviceAggregate-xxxx-x` 占位设备 → probe 通过 → 录到 0 字节 → 幻觉 token。触发面太窄（无内置麦桌面 Mac + 拔外接麦 + 立刻按热键），等真有 Mac mini / Studio 用户报问题再做
+- **录音时实时检测麦克风离线 - 录音中途断开监控**（32 轮遗留 B）—— 32 轮的 callback 连续 5 次 `input_overflow` 升级 device_lost 在 PipeWire 上完全失效（拔麦后 PipeWire 给的是干净静音流，无任何 status flag）。触发面只有"按住热键说话过程中精准拔麦"那一句，下一次按热键时 32 轮的 pactl probe 会兜底，影响面就一句话，不值得为它再加一条 daemon 线程
