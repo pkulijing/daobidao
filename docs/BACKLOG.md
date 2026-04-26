@@ -19,6 +19,7 @@
   - [录音时实时检测麦克风离线](#录音时实时检测麦克风离线)
   - [流式 preview 浮窗显示 pending](#流式-preview-浮窗显示-pending)
   - [STT 模型按需可视化下载 + 已下载状态感知](#stt-模型按需可视化下载--已下载状态感知)
+  - [流式 worker 落后于音频时的 backpressure 提示](#流式-worker-落后于音频时的-backpressure-提示)
 - [代码质量](#代码质量)
   - [测试套增强（v2）](#测试套增强v2)
   - [并发模型迁移到 asyncio](#并发模型迁移到-asyncio)
@@ -222,6 +223,46 @@
 - **`--init` 命令行也该支持选 variant**:`daobidao --init --variant 1.7B`,不阻塞这一轮但可以顺手做
 
 **scope**:中。后端 ~150 行(含 DownloadManager + 两条端点 + spike 验证) + 前端 ~80 行(状态渲染 + 进度轮询 + 按钮态切换)+ 3 份 locale 各 6-8 条新字符串。**关键前置是 modelscope 是否暴露进度回调的 spike**,半小时内能验明;如果不暴露需要绕开 modelscope 自己 HTTP 下载,scope 再翻 50%。优先级**高** —— 这是 26 轮的直接遗留,用户视角看就是"买了个坏的下拉"。
+
+---
+
+### 流式 worker 落后于音频时的 backpressure 提示
+
+**动机**:35 轮加滑窗后 KV cache 硬墙不再是问题,但单线程 worker 的 `stream_step` 处理速度(~500-800ms / chunk on Apple M1, 0.6B)在用户极快语速 / UP 主播放等场景下可能跟不上音频流入(2s / chunk)。当前没有 backpressure 机制:
+
+- `_event_queue` 持续增长(每 chunk 128KB chunk reference)
+- `state.committed_tokens` 永久累加(prefill slice 截了,但 `tokenizer.decode` 全量算 → 几小时后 decode 比推理还慢)
+- 用户视觉**无任何反馈**,只感知"字越出越慢" + "松手后还要等很久才出最后那段"
+- 极端连讲几小时会被 OS OOM kill,但日常不会
+
+**目标状态**:
+
+- worker queue 长度超阈值 → 浮窗变色(复用 32 轮 error_state 红色药丸思路,可能换不同色比如黄色)+ 视觉传达"识别落后"
+- 用户看到提示后可主动停顿让 worker 追上,或松手 finalize
+- **不丢 chunk**(用户明确否决了"自动丢老 chunk"方案,可接受看到提示后自己放慢)
+- queue 退回阈值以下 → 浮窗自动恢复正常态
+
+**候选方向**:
+
+- **浮窗加 backpressure 状态档**:目前已有 `idle / recording / processing / error / ready`,加 `backpressure` 第六档。macos / linux overlay 各加一组绘制逻辑(~30 行/平台)
+- **双阈值去抖(Schmitt trigger)**:比如 queue ≥ 5 触发 backpressure 态,≤ 3 退出,避免抖动反复闪
+- **阈值自适应**:固定 5 chunks 在 M1 / Intel 上等效不同延迟,可以做成 "阈值 = max(3, ceil(chunk 平均处理时长 / 2s) * 2)" 这种基于 EMA 的自调节,需要 spike
+- **文案不依赖 i18n**:35 轮发现 `overlay.update(text)` 的 text 参数被无视(120×34 太窄渲染不下),所以纯靠**视觉(颜色 + 可能的图标)**传达,不加 i18n 字符串
+
+**风险 / 注意点**:
+
+- 浮窗状态机已有 error_state 抖动 bug 历史(32 轮修过),新增 backpressure 要复用同款 timeout / cancel 机制,避免重复造轮子
+- 阈值定多少需要测:M1 vs Intel CPU 上 stream_step 速度差异大,固定 5 不一定通用。先静态阈值落地,等用户实测痛了再上自适应
+- backpressure 跟 recording / processing 视觉区分要清晰(三种活动态了),可能用不同颜色饱和度
+- 长 session(几小时)的 `committed_text` decode 退化是另一个相关问题,**不在本条 scope** —— 那条值得另开一条 backlog "增量 decode 优化"
+- "正常用户不会触发"(语速 < 模型速度),所以这是 UX 兜底而非常规路径,优先级中等
+
+**scope**:小到中
+
+- macos + linux overlay 加新状态档:~60 行
+- `_on_stream_chunk` 加 queue 长度检测 + state 切换调用 + 双阈值去抖:~30 行
+- 测试覆盖(主要测阈值翻转 + 状态切换):~50 行
+- 静态阈值版半天能落地;自适应阈值版多半天
 
 ---
 
