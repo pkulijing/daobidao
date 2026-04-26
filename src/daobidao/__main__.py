@@ -76,11 +76,7 @@ def create_stt_engine(config: dict):
 def play_sound(path: str) -> None:
     """播放提示音。"""
     if path and os.path.exists(path):
-        cmd = (
-            ["afplay", path]
-            if sys.platform == "darwin"
-            else ["paplay", path]
-        )
+        cmd = ["afplay", path] if sys.platform == "darwin" else ["paplay", path]
         with contextlib.suppress(FileNotFoundError):
             subprocess.Popen(
                 cmd,
@@ -173,12 +169,10 @@ class WhisperInput:
         self.sound_stop = sound.get(f"stop{_SOUND_SUFFIX}", "")
         self._processing = False
         self._status_callback = None
-        self.tray_status_enabled = config.get(
-            "tray_status", {}
-        ).get("enabled", True)
-        self.overlay_enabled = config.get(
-            "overlay", {}
-        ).get("enabled", True)
+        self.tray_status_enabled = config.get("tray_status", {}).get(
+            "enabled", True
+        )
+        self.overlay_enabled = config.get("overlay", {}).get("enabled", True)
         self._overlay = None
 
         # 单线程 worker：所有由热键触发的实际动作（录音 start/stop、提示音、
@@ -222,9 +216,7 @@ class WhisperInput:
         # 看到这个 flag 直接早退,不走 stop / paste 路径。
         self._mic_offline_during_recording: bool = False
         # 让 recorder 在 PortAudio 线程检测到设备消失时把信号 enqueue 给我们
-        self.recorder.set_stream_status_callback(
-            self._on_stream_status_signal
-        )
+        self.recorder.set_stream_status_callback(self._on_stream_status_signal)
 
     def set_status_callback(self, callback) -> None:
         """设置状态变化回调 (status: str) -> None。"""
@@ -312,9 +304,7 @@ class WhisperInput:
             self._stream_near_limit_warned = False
             self._stream_overflow_hit = False
             try:
-                self.recorder.start_streaming(
-                    on_chunk=self._on_stream_chunk
-                )
+                self.recorder.start_streaming(on_chunk=self._on_stream_chunk)
             except MicUnavailableError as exc:
                 # init_stream_state 已 set 但录音没起来 → 撤掉
                 self._stream_state = None
@@ -390,10 +380,7 @@ class WhisperInput:
         self._mic_offline_during_recording = True
         if reason == "device_lost":
             now = time.monotonic()
-            if (
-                now - self._last_mic_warning_at
-                < self._mic_warning_cooldown_s
-            ):
+            if now - self._last_mic_warning_at < self._mic_warning_cooldown_s:
                 logger.debug(
                     "mic_offline_warning_suppressed",
                     reason=reason,
@@ -401,9 +388,7 @@ class WhisperInput:
                 )
                 return
             self._last_mic_warning_at = now
-        logger.warning(
-            "mic_offline", reason=reason, detail=detail
-        )
+        logger.warning("mic_offline", reason=reason, detail=detail)
         if self._overlay and self.overlay_enabled:
             try:
                 msg = (
@@ -489,8 +474,7 @@ class WhisperInput:
             # 28s 接近 KV cache 上限(~33-38s),提示用户松手
             if (
                 not self._stream_near_limit_warned
-                and self._stream_total_samples
-                >= _STREAM_WARN_SAMPLES
+                and self._stream_total_samples >= _STREAM_WARN_SAMPLES
             ):
                 self._stream_near_limit_warned = True
                 trigger_near_limit_warning = True
@@ -507,10 +491,7 @@ class WhisperInput:
     def _recording_streaming(self) -> bool:
         """辅助判断:是否在流式录音中(跟 recorder.is_recording 相关,但在
         流式专用路径里还要求 _stream_state 非 None)。"""
-        return (
-            self._stream_state is not None
-            and self.recorder.is_recording
-        )
+        return self._stream_state is not None and self.recorder.is_recording
 
     def _notify_near_limit(self) -> None:
         """浮窗显示"接近识别上限",用户可以决定松手。"""
@@ -521,9 +502,7 @@ class WhisperInput:
             total_samples=self._stream_total_samples,
         )
 
-    def _do_stream_step(
-        self, audio_chunk: np.ndarray, is_last: bool
-    ) -> None:
+    def _do_stream_step(self, audio_chunk: np.ndarray, is_last: bool) -> None:
         """Worker 线程里跑一次 stream_step,把 committed_delta 粘贴到焦点。"""
         # 先前已 overflow,剩余 chunk 直接丢
         if self._stream_overflow_hit:
@@ -623,9 +602,7 @@ class WhisperInput:
                 )
                 type_text(text)
             else:
-                logger.warning(
-                    "no_text_recognized", message=t("main.no_text")
-                )
+                logger.warning("no_text_recognized", message=t("main.no_text"))
         except Exception:
             logger.exception(
                 "recognize_failed", message=t("main.recognize_fail", error="")
@@ -661,9 +638,7 @@ class WhisperInput:
         if "tray_status.enabled" in changes:
             self.tray_status_enabled = changes["tray_status.enabled"]
             key = (
-                "main.tray_on"
-                if self.tray_status_enabled
-                else "main.tray_off"
+                "main.tray_on" if self.tray_status_enabled else "main.tray_off"
             )
             logger.info(
                 "config_toggle",
@@ -752,13 +727,9 @@ class WhisperInput:
                         target_variant=None,
                         error=None,
                     )
-                logger.info(
-                    "stt_switch_done", to_variant=new_variant
-                )
+                logger.info("stt_switch_done", to_variant=new_variant)
             except Exception as exc:
-                logger.exception(
-                    "stt_switch_failed", to_variant=new_variant
-                )
+                logger.exception("stt_switch_failed", to_variant=new_variant)
                 with self._stt_switch_lock:
                     self._stt_switch_state.update(
                         switching=False,
@@ -766,9 +737,7 @@ class WhisperInput:
                         error=str(exc),
                     )
 
-        threading.Thread(
-            target=_worker, name="stt-switch", daemon=True
-        ).start()
+        threading.Thread(target=_worker, name="stt-switch", daemon=True).start()
 
 
 def main():
@@ -788,9 +757,7 @@ def main():
     configure_logging("INFO")
 
     # 先用默认配置解析命令行（获取 -c 指定的配置文件路径）
-    parser = argparse.ArgumentParser(
-        description=t("cli.description")
-    )
+    parser = argparse.ArgumentParser(description=t("cli.description"))
     _commit_suffix = f" (commit {__commit__[:7]})" if __commit__ else ""
     parser.add_argument(
         "-v",
@@ -798,12 +765,8 @@ def main():
         action="version",
         version=f"daobidao {__version__}{_commit_suffix}",
     )
-    parser.add_argument(
-        "-c", "--config", help=t("cli.config_help")
-    )
-    parser.add_argument(
-        "-k", "--hotkey", help=t("cli.hotkey_help")
-    )
+    parser.add_argument("-c", "--config", help=t("cli.config_help"))
+    parser.add_argument("-k", "--hotkey", help=t("cli.hotkey_help"))
     parser.add_argument(
         "--no-tray",
         action="store_true",
@@ -850,9 +813,7 @@ def main():
             install_app_bundle()
 
         # 下载 STT 模型
-        logger.info(
-            "init_download_model", message=t("init.download_model")
-        )
+        logger.info("init_download_model", message=t("init.download_model"))
         config_mgr = ConfigManager(args.config)
         stt = create_stt_engine(config_mgr.config)
         stt.load()
@@ -881,15 +842,36 @@ def main():
             return
 
         if not os.environ.get(BUNDLE_ENV_KEY):
-            if (
-                not is_app_bundle_installed()
-                or is_app_bundle_outdated()
-            ):
-                # 首次运行或版本升级：安装/更新 .app bundle
-                install_app_bundle()
-            # 每次都更新 venv 路径（适应 uv tool upgrade）
-            update_venv_path()
-            launch_via_bundle(sys.argv[1:])
+            from daobidao.backends.app_bundle_macos import (
+                _get_prebuilt_assets,
+            )
+
+            launcher_ref, _ = _get_prebuilt_assets()
+            try:
+                has_launcher = launcher_ref.is_file()
+            except (AttributeError, FileNotFoundError, OSError):
+                has_launcher = False
+
+            if has_launcher:
+                if not is_app_bundle_installed() or is_app_bundle_outdated():
+                    # 首次运行或版本升级：安装/更新 .app bundle
+                    install_app_bundle()
+                # 每次都更新 venv 路径（适应 uv tool upgrade）
+                update_venv_path()
+                launch_via_bundle(sys.argv[1:])
+            else:
+                # Dev mode: 源码树里没有预编译 launcher 二进制(它在
+                # .gitignore 里,只有 CI 构建 wheel 时才生成)。跳过 bundle
+                # 安装 + relaunch,直接以 venv 进程跑 `daobidao`。代价是
+                # macOS TCC 权限会归因到 Python interpreter 而不是
+                # "Daobidao",但这是 dev mode 已有取舍,不是回归。
+                logger.info(
+                    "dev_mode_skip_bundle",
+                    message=(
+                        "macOS dev mode: 未找到预编译 launcher 二进制,"
+                        "跳过 .app bundle 路径,直接以 venv 进程启动"
+                    ),
+                )
 
     # 加载配置
     config_mgr = ConfigManager(args.config)
@@ -964,9 +946,7 @@ def main():
 
         wi.set_overlay(RecordingOverlay())
     except ImportError:
-        logger.warning(
-            "overlay_unavailable", message=t("main.overlay_unavail")
-        )
+        logger.warning("overlay_unavailable", message=t("main.overlay_unavail"))
 
     # 预加载模型
     if not args.no_preload:
@@ -1036,9 +1016,7 @@ def main():
         try:
             from daobidao.tray import run_tray
         except ImportError:
-            logger.warning(
-                "tray_unavailable", message=t("main.no_tray")
-            )
+            logger.warning("tray_unavailable", message=t("main.no_tray"))
 
     if run_tray is not None:
         tray_icon = run_tray(wi, settings_server, on_quit=shutdown)
