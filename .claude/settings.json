@@ -1,16 +1,1 @@
-{
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Edit|MultiEdit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash .claude/format-after-edit.sh",
-            "timeout": 30
-          }
-        ]
-      }
-    ]
-  }
-}
+{}
