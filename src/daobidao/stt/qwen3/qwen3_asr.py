@@ -21,6 +21,7 @@ Press-and-hold 离线路径(26 轮):
 
 from __future__ import annotations
 
+import contextlib
 import io
 import time
 import wave
@@ -101,9 +102,26 @@ class Qwen3ASRSTT(BaseSTT):
             f"model_{self.variant}/decoder.int8.onnx",
             "tokenizer/*",
         ]
-        self.cache_root = Path(
-            snapshot_download(REPO_ID, allow_patterns=allow_patterns)
-        )
+        # modelscope snapshot_download 用 print() 打 "Downloading Model from
+        # ... to directory: ..." 一行(每次启动 cache 命中也照打),不走 stdlib
+        # logging,我们 logger.info 那条 qwen3_snapshot_start 已经覆盖同样信息,
+        # 这里把它的 stdout 吞了避免污染 terminal。出错时把吞下的内容转 log
+        # 留诊断;tqdm 进度条走 stderr 不受影响,真下载时仍可见。
+        captured = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(captured):
+                self.cache_root = Path(
+                    snapshot_download(
+                        REPO_ID, allow_patterns=allow_patterns
+                    )
+                )
+        except Exception:
+            if captured.getvalue().strip():
+                logger.error(
+                    "modelscope_stdout_at_error",
+                    output=captured.getvalue(),
+                )
+            raise
         logger.info(
             "qwen3_snapshot_done",
             variant=self.variant,

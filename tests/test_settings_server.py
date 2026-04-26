@@ -375,3 +375,67 @@ def test_update_apply_failure_propagates_output(running_server, monkeypatch):
     body = json.loads(data)
     assert body["ok"] is False
     assert body["output"] == "pypi unreachable"
+
+
+# --------------------------------------------------------------------------
+# /api/update/check/force —— round 34 强制检查端点
+# --------------------------------------------------------------------------
+
+def test_update_check_force_triggers_fetch(running_server, monkeypatch):
+    """POST /api/update/check/force 无视 TTL 调一次 fetch。"""
+    host, port, _mgr = running_server
+
+    fetch_count = [0]
+
+    def fake_fetch(timeout=3.0):
+        fetch_count[0] += 1
+        return "9.9.9"
+
+    monkeypatch.setattr(
+        "daobidao.updater.fetch_latest_version", fake_fetch
+    )
+
+    # server start 时已 trigger 过一次,等它跑完(避免下面 force 跟它撞)
+    for _ in range(100):
+        _, data = _request("GET", host, port, "/api/update/check")
+        if json.loads(data)["checked_at"] is not None:
+            break
+        time.sleep(0.02)
+    baseline = fetch_count[0]
+
+    # force 调用 → 必须再 fetch 一次,即使 TTL 还没过
+    status, data = _request("POST", host, port, "/api/update/check/force")
+    assert status == 200
+    body = json.loads(data)
+    assert "checking" in body  # 返回 snapshot
+
+    for _ in range(100):
+        _, snap_data = _request("GET", host, port, "/api/update/check")
+        snap = json.loads(snap_data)
+        if not snap["checking"]:
+            break
+        time.sleep(0.02)
+
+    assert fetch_count[0] == baseline + 1
+
+
+def test_update_check_force_disabled_when_check_off(
+    running_server, monkeypatch
+):
+    """更新检查总开关关了时,force 端点也不该 fetch(尊重用户设置)。"""
+    host, port, mgr = running_server
+    mgr.set("update.check_enabled", False)
+    mgr.save()
+
+    fetch_count = [0]
+    monkeypatch.setattr(
+        "daobidao.updater.fetch_latest_version",
+        lambda timeout=3.0: fetch_count.__setitem__(
+            0, fetch_count[0] + 1
+        ) or "9.9.9",
+    )
+
+    status, _ = _request("POST", host, port, "/api/update/check/force")
+    assert status == 200
+    time.sleep(0.1)  # 给 worker thread 一点时间(如果它真启动了)
+    assert fetch_count[0] == 0

@@ -824,6 +824,11 @@ def main():
         action="store_true",
         help=t("cli.allow_multiple_help"),
     )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help=t("cli.verbose_help"),
+    )
     if sys.platform == "darwin":
         parser.add_argument(
             "--uninstall",
@@ -890,8 +895,12 @@ def main():
     config_mgr = ConfigManager(args.config)
     config = config_mgr.config
 
-    # 用户配置的 log_level 覆盖早期默认(idempotent re-configure)
-    configure_logging(config.get("log_level", "INFO"))
+    # 用户配置的 log_level 覆盖早期默认(idempotent re-configure)。
+    # --verbose 才挂 stderr handler;否则只写文件,terminal 干净。
+    configure_logging(
+        config.get("log_level", "INFO"),
+        stderr=args.verbose,
+    )
 
     # 从配置更新语言（覆盖默认值）
     set_language(config.get("ui", {}).get("language", "zh"))

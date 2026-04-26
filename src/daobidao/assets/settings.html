@@ -324,6 +324,14 @@
     </div>
     <div class="setting-row">
       <div>
+        <div class="setting-label" data-i18n="settings.update_check_force">手动检查更新</div>
+        <div class="setting-desc" data-i18n="settings.update_check_force_desc">立即查询 PyPI 是否有新版本</div>
+      </div>
+      <button class="btn" id="update_check_force_btn"
+              onclick="forceCheckUpdate()" data-i18n="settings.update_check_force_btn">检查</button>
+    </div>
+    <div class="setting-row">
+      <div>
         <div class="setting-label" data-i18n="settings.log_level">日志级别</div>
         <div class="setting-desc" data-i18n="settings.log_level_desc">排查问题时切到 DEBUG，改后需重启生效</div>
       </div>
@@ -595,6 +603,35 @@ async function checkUpdate() {
       document.getElementById('update_banner').style.display = 'none';
     }
   } catch (_) {}
+}
+
+async function forceCheckUpdate() {
+  // 「立即检查」按钮:无视 TTL 触发一次,然后 poll 直到后台 fetch 跑完,
+  // 再 checkUpdate() 刷 banner。整个过程把按钮 disable 掉。
+  var btn = document.getElementById('update_check_force_btn');
+  btn.disabled = true;
+  var origText = btn.textContent;
+  btn.textContent = i18n('update.checking');
+  try {
+    await fetch('/api/update/check/force', {method: 'POST'});
+    // 后台 fetch 通常 < 1s,本机网络快;poll 上限 5s 兜底
+    for (var i = 0; i < 50; i++) {
+      await new Promise(function (r) { setTimeout(r, 100); });
+      var res = await fetch('/api/update/check');
+      var data = await res.json();
+      if (!data.checking) break;
+    }
+    await checkUpdate();
+    if (!document.getElementById('update_banner').style.display
+        || document.getElementById('update_banner').style.display === 'none') {
+      showToast(i18n('update.no_new_version'), 3000);
+    }
+  } catch (e) {
+    showToast(i18n('update.failed') + ': ' + e.message, 4000);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = origText;
+  }
 }
 
 async function applyUpdate() {

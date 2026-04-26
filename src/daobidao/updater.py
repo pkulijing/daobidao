@@ -27,6 +27,10 @@ logger = get_logger(__name__)
 PYPI_JSON_URL = "https://pypi.org/pypi/daobidao/json"
 PACKAGE_NAME = "daobidao"
 
+# 缓存 TTL:1 小时。设置页打开时上次检查超过这个窗口就重拉一次。短到能让
+# 「装完发版」之类常规延迟内自动刷新,长到不会因为来回开页就频繁打 PyPI。
+_STALE_AFTER_SECONDS = 3600.0
+
 MANUAL_UPGRADE_HINT = (
     "未找到 uv 可执行文件，请在终端运行：\n"
     "  uv tool upgrade daobidao"
@@ -142,6 +146,26 @@ class UpdateChecker:
         )
         t.start()
         return True
+
+    def is_stale(self) -> bool:
+        """从未检查过 / 上次检查超过 TTL 都算 stale。"""
+        with self._lock:
+            if self._checked_at is None:
+                return True
+            return (
+                time.time() - self._checked_at
+            ) > _STALE_AFTER_SECONDS
+
+    def trigger_if_stale(self) -> bool:
+        """缓存过期就触发后台检查;新鲜或正在检查中跳过。
+
+        返回 True 表示新启动了一次,False 表示没启动。
+        """
+        if self._checking:
+            return False
+        if not self.is_stale():
+            return False
+        return self.trigger_async()
 
     def _run_check(self) -> None:
         latest = fetch_latest_version()

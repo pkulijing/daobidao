@@ -96,12 +96,18 @@ def test_configure_logging_idempotent(monkeypatch, tmp_path):
         "daobidao.config_manager._find_project_root",
         lambda: tmp_path,
     )
+    # round 34 起默认 stderr=False,只挂 file handler。再调依旧只 1 个。
     log_mod.configure_logging("INFO")
     first = len(logging.getLogger().handlers)
     log_mod.configure_logging("DEBUG")
     second = len(logging.getLogger().handlers)
-    assert first == second == 2  # file + stderr
+    assert first == second == 1  # file only
     assert logging.getLogger().level == logging.DEBUG
+
+    # 显式 stderr=True 再调一次:多出一个 StreamHandler
+    log_mod.configure_logging("INFO", stderr=True)
+    third = len(logging.getLogger().handlers)
+    assert third == 2  # file + stderr
 
 
 def test_log_file_logfmt_format(monkeypatch, tmp_path):

@@ -171,6 +171,8 @@ class _SettingsHandler(BaseHTTPRequestHandler):
             self._handle_open_log_dir()
         elif self.path == "/api/update/apply":
             self._handle_update_apply()
+        elif self.path == "/api/update/check/force":
+            self._handle_update_check_force()
         else:
             self.send_error(404)
 
@@ -275,12 +277,27 @@ class _SettingsHandler(BaseHTTPRequestHandler):
             snap["has_update"] = False
             self._send_json(snap)
             return
-        # 首次打开设置页 / 缓存为空时顺手异步触发一次
-        snap = checker.snapshot
-        if snap["checked_at"] is None and not snap["checking"]:
-            checker.trigger_async()
+        # 缓存过期(从未查过 / 上次查过 _STALE_AFTER_SECONDS)时后台启一次
+        # 重查;新鲜则直接返当前 snapshot —— stale-while-revalidate
+        checker.trigger_if_stale()
+        self._send_json(checker.snapshot)
+
+    def _handle_update_check_force(self) -> None:
+        """无视 TTL 强制启动一次后台检查(高级设置「立即检查」按钮用)。
+
+        仍然尊重「自动检查更新」总开关 —— 用户关了它表示不想联网,force
+        端点也不该绕过。
+        """
+        checker: UpdateChecker = self.server.update_checker
+        config_mgr: ConfigManager = self.server.config_manager
+        update_cfg = config_mgr.config.get("update") or {}
+        if not update_cfg.get("check_enabled", True):
             snap = checker.snapshot
-        self._send_json(snap)
+            snap["has_update"] = False
+            self._send_json(snap)
+            return
+        checker.trigger_async()
+        self._send_json(checker.snapshot)
 
     def _handle_update_apply(self) -> None:
         ok, output = apply_upgrade()

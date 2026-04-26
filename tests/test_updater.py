@@ -260,3 +260,158 @@ def test_update_checker_network_failure(monkeypatch):
     assert snap["latest"] is None
     assert snap["has_update"] is False
     assert snap["error"] is not None
+
+
+# --------------------------------------------------------------------------
+# TTL / is_stale / trigger_if_stale (round 34)
+# --------------------------------------------------------------------------
+
+def test_is_stale_when_never_checked():
+    checker = updater.UpdateChecker(current_version="1.0.0")
+    assert checker.is_stale() is True
+
+
+def test_is_stale_when_recently_checked(monkeypatch):
+    """checked_at = now - 60s,远在 TTL 内 → 不 stale。"""
+    monkeypatch.setattr(
+        updater,
+        "fetch_latest_version",
+        lambda timeout=3.0: "1.0.0",
+    )
+    checker = updater.UpdateChecker(current_version="1.0.0")
+    checker.trigger_async()
+    assert _wait_until(lambda: checker.snapshot["checked_at"] is not None)
+    # 上面 trigger_async 用 time.time() 写真实时间戳;它必然在 TTL 内
+    assert checker.is_stale() is False
+
+
+def test_is_stale_when_old_check(monkeypatch):
+    """伪造 checked_at 为 2 小时前 → stale。"""
+    monkeypatch.setattr(
+        updater,
+        "fetch_latest_version",
+        lambda timeout=3.0: "1.0.0",
+    )
+    checker = updater.UpdateChecker(current_version="1.0.0")
+    checker.trigger_async()
+    assert _wait_until(lambda: checker.snapshot["checked_at"] is not None)
+
+    # 直接捏内部 _checked_at,模拟 2 小时前的检查
+    with checker._lock:
+        checker._checked_at = time.time() - 7200.0
+    assert checker.is_stale() is True
+
+
+def test_trigger_if_stale_first_call(monkeypatch):
+    """首次调,checked_at 为 None,是 stale,真启动。"""
+    monkeypatch.setattr(
+        updater,
+        "fetch_latest_version",
+        lambda timeout=3.0: "1.0.0",
+    )
+    checker = updater.UpdateChecker(current_version="1.0.0")
+    assert checker.trigger_if_stale() is True
+    assert _wait_until(lambda: checker.snapshot["checked_at"] is not None)
+
+
+def test_trigger_if_stale_returns_false_when_fresh(monkeypatch):
+    """缓存还新鲜,trigger_if_stale 不启动新检查,返 False。"""
+    fetch_count = [0]
+
+    def fake_fetch(timeout=3.0):
+        fetch_count[0] += 1
+        return "1.0.0"
+
+    monkeypatch.setattr(updater, "fetch_latest_version", fake_fetch)
+    checker = updater.UpdateChecker(current_version="1.0.0")
+    checker.trigger_async()
+    assert _wait_until(lambda: checker.snapshot["checked_at"] is not None)
+    assert fetch_count[0] == 1
+
+    # checked_at 刚写,fresh,trigger_if_stale 应当跳过
+    assert checker.trigger_if_stale() is False
+    # 给后台一点时间确认确实没有第二次 fetch
+    time.sleep(0.1)
+    assert fetch_count[0] == 1
+
+
+def test_trigger_if_stale_returns_false_when_in_progress():
+    """正在检查中,trigger_if_stale 不再启动,返 False。"""
+    checker = updater.UpdateChecker(current_version="1.0.0")
+    # 直接捏内部状态模拟"正在检查中"
+    with checker._lock:
+        checker._checking = True
+    assert checker.trigger_if_stale() is False
+
+
+# --------------------------------------------------------------------------
+# Bundled: configure_logging stderr param (round 34 顺手做)
+# --------------------------------------------------------------------------
+
+def test_configure_logging_default_no_stderr_handler(monkeypatch, tmp_path):
+    """默认不挂 stderr handler —— 命令行启动时不在 terminal 打 log。"""
+    import logging
+
+    import daobidao.logger as log_mod
+
+    monkeypatch.setattr(
+        "daobidao.config_manager._find_project_root",
+        lambda: tmp_path,
+    )
+    # 备份并清空 root handlers
+    root = logging.getLogger()
+    saved_handlers = root.handlers[:]
+    saved_level = root.level
+    saved_configured = log_mod._configured
+    for h in root.handlers[:]:
+        root.removeHandler(h)
+    try:
+        log_mod.configure_logging("INFO")
+        # 默认只有 file handler,无 stderr
+        assert len(root.handlers) == 1
+        assert isinstance(
+            root.handlers[0], logging.handlers.RotatingFileHandler
+        )
+    finally:
+        for h in root.handlers[:]:
+            root.removeHandler(h)
+        for h in saved_handlers:
+            root.addHandler(h)
+        root.setLevel(saved_level)
+        import structlog
+        structlog.reset_defaults()
+        log_mod._configured = saved_configured
+
+
+def test_configure_logging_with_stderr_handler(monkeypatch, tmp_path):
+    """显式 stderr=True 时挂上 stderr handler。"""
+    import logging
+
+    import daobidao.logger as log_mod
+
+    monkeypatch.setattr(
+        "daobidao.config_manager._find_project_root",
+        lambda: tmp_path,
+    )
+    root = logging.getLogger()
+    saved_handlers = root.handlers[:]
+    saved_level = root.level
+    saved_configured = log_mod._configured
+    for h in root.handlers[:]:
+        root.removeHandler(h)
+    try:
+        log_mod.configure_logging("INFO", stderr=True)
+        # file + stderr 两个 handler
+        assert len(root.handlers) == 2
+        kinds = {type(h).__name__ for h in root.handlers}
+        assert "RotatingFileHandler" in kinds
+        assert "StreamHandler" in kinds
+    finally:
+        for h in root.handlers[:]:
+            root.removeHandler(h)
+        for h in saved_handlers:
+            root.addHandler(h)
+        root.setLevel(saved_level)
+        import structlog
+        structlog.reset_defaults()
+        log_mod._configured = saved_configured

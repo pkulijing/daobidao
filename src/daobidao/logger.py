@@ -85,8 +85,19 @@ def _shared_processors() -> list:
     ]
 
 
-def configure_logging(level: str = "INFO") -> None:
-    """一次性配好 structlog + stdlib logging。再调用会重新配置(幂等)。"""
+def configure_logging(
+    level: str = "INFO",
+    *,
+    stderr: bool = False,
+) -> None:
+    """一次性配好 structlog + stdlib logging。再调用会重新配置(幂等)。
+
+    ``stderr=False`` (默认):只挂 file handler,terminal 不打 log。命令行
+    启动时干净,文件日志照样在 ``get_log_dir()/daobidao.log`` 里。
+
+    ``stderr=True``:同时挂 stderr handler,适合 ``--verbose`` 排错或
+    launchd 把 stderr 重定向到日志文件的场景。
+    """
     global _configured
 
     log_dir = get_log_dir()
@@ -116,17 +127,6 @@ def configure_logging(level: str = "INFO") -> None:
         ],
     )
 
-    # stderr:终端是 TTY 就带颜色,否则纯文本(避免 ANSI 码污染重定向的日志)
-    stderr_formatter = structlog.stdlib.ProcessorFormatter(
-        foreign_pre_chain=shared,
-        processors=[
-            structlog.stdlib.ProcessorFormatter.remove_processors_meta,
-            structlog.dev.ConsoleRenderer(
-                colors=sys.stderr.isatty(),
-            ),
-        ],
-    )
-
     file_handler = logging.handlers.RotatingFileHandler(
         log_dir / APP_LOG_FILENAME,
         maxBytes=_MAX_BYTES,
@@ -135,16 +135,28 @@ def configure_logging(level: str = "INFO") -> None:
     )
     file_handler.setFormatter(file_formatter)
 
-    stderr_handler = logging.StreamHandler(sys.stderr)
-    stderr_handler.setFormatter(stderr_formatter)
-
     root = logging.getLogger()
     for h in root.handlers[:]:
         root.removeHandler(h)
         with contextlib.suppress(Exception):
             h.close()
     root.addHandler(file_handler)
-    root.addHandler(stderr_handler)
+
+    if stderr:
+        # 终端是 TTY 就带颜色,否则纯文本(避免 ANSI 码污染重定向的日志)
+        stderr_formatter = structlog.stdlib.ProcessorFormatter(
+            foreign_pre_chain=shared,
+            processors=[
+                structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+                structlog.dev.ConsoleRenderer(
+                    colors=sys.stderr.isatty(),
+                ),
+            ],
+        )
+        stderr_handler = logging.StreamHandler(sys.stderr)
+        stderr_handler.setFormatter(stderr_formatter)
+        root.addHandler(stderr_handler)
+
     root.setLevel(_normalize_level(level))
 
     _configured = True
