@@ -51,11 +51,65 @@ def running_server(tmp_path, autostart_state, monkeypatch):
     monkeypatch.setattr(ss.os, "kill", lambda *a, **kw: None)
     monkeypatch.setattr(ss.os, "execv", lambda *a, **kw: None)
 
+    # ===== 永久竞争压力闸门(issue #7 第一阶段)=====
+    # 把 _run_check 入口睡 50ms,模拟 CI runner 上 worker 线程被晚调度的最坏
+    # 情况。这是给下面那段修复(等 worker 跑完再 yield)做的"持续 stress 测
+    # 试":未来谁动了 fixture 启动序列、又退回到 race-prone 写法,本地裸跑就
+    # 能稳定挂掉(对应受害者:test_update_check_force_disabled_when_check_off
+    # 等 4 个测;详细机理见下方 fix 注释)。
+    # 实测 18/21 个测试受 50ms 影响,套件总耗时 +~1.15s,可接受。
+    from daobidao.updater import UpdateChecker as _UpdateChecker
+
+    _orig_run_check = _UpdateChecker._run_check
+
+    def _slow_run_check(self):
+        import time as _t
+
+        _t.sleep(0.05)
+        return _orig_run_check(self)
+
+    monkeypatch.setattr(_UpdateChecker, "_run_check", _slow_run_check)
+    # ===== END 压力闸门 =====
+
+    # 修复:SettingsServer.start() 里有副作用 —— 它会 auto-trigger 一次
+    # UpdateChecker._run_check,起一个后台 worker 线程去查 PyPI。worker 会
+    # LOAD_GLOBAL daobidao.updater.fetch_latest_version 然后调用。如果
+    # worker 在测试体的 monkeypatch.setattr 之后才解析这个名字,它会调到
+    # 测试体准备的 fake,污染 fetch_count / calls 这类计数 —— 这就是这套
+    # 测试在 CI 上偶发翻车的根因(本地 worker 调度通常更早,赢得竞争,所以
+    # 难复现;只有 force_disabled_when_check_off 因为自带 sleep(0.1) 给
+    # worker 留了观察窗口才会偶发被看见)。
+    #
+    # 修复策略:server.start() 之后 fixture 主动等 worker 跑完再 yield。
+    # 这样测试体里所有 monkeypatch 都晚于 worker 的 LOAD_GLOBAL,竞争窗口
+    # 关闭。再之后测试体可以放心覆盖 fetch_latest_version,worker 已死,
+    # 不会再调到 fake。
+    #
+    # 注:这里直接 monkeypatch 把 fetch_latest_version 替成 no-op 还有个
+    # 额外好处 —— fixture 阶段 worker 跑的就是 no-op,不会真发 PyPI 请求,
+    # 测试在断网环境下也稳。
+    monkeypatch.setattr(
+        "daobidao.updater.fetch_latest_version",
+        lambda timeout=3.0: None,
+    )
+
     cfg_path = tmp_path / "config.yaml"
     config_mgr = ConfigManager(config_path=str(cfg_path))
     port = _free_port()
     server = ss.SettingsServer(config_mgr, port=port)
     server.start()
+
+    # 等 server.start() 起的 auto-trigger worker 把 _run_check 跑完。
+    # _checked_at 在 _run_check 末尾的锁里设;它非 None 即代表 worker 退出。
+    import time as _wait_t
+
+    _deadline = _wait_t.time() + 5.0
+    while (
+        server._update_checker.snapshot["checked_at"] is None
+        and _wait_t.time() < _deadline
+    ):
+        _wait_t.sleep(0.005)
+
     try:
         yield ("127.0.0.1", port, config_mgr)
     finally:
