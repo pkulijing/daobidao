@@ -17,7 +17,7 @@
 - **area**(模块):`area:stt` STT 与模型 / `area:ui` 设置页 / overlay / 托盘 / `area:backend` 录音 / 输入设备 / 输入法 / `area:packaging` 安装升级 / `area:test` 测试套 / `area:devexp` CI 与工具链
 - **priority**(优先级):`priority:P0` 必须做、不做有重大风险 / `priority:P1` 重大新功能,做了有很大提升 / `priority:P2` 一般小功能小修复
 
-排序优先级:label 是硬档(P0/P1/P2),GitHub Project 看板 [Daobidao Backlog](https://github.com/users/pkulijing/projects/1) 里的 `Priority` 字段是软排序(同档内拖动决定顺序)。
+排序粒度只到 P0/P1/P2 三档,同档内不再细排 —— 真要挑下一个时凭当下心情和痛点选。
 
 ## P0 — 必须做
 
