@@ -12,7 +12,7 @@ Project uses **src layout**: all Python code lives under `src/daobidao/` as a si
 
 **Round 26 replaced SenseVoice with Qwen3-ASR**. SenseVoice recognized only keywords on many real utterances; Qwen3-ASR-0.6B produces exact-text matches on the same audio. Migration details in `docs/26-Qwen3-ASR替换SenseVoice/`. If you see anything about `stt/sense_voice.py` / `_wav_frontend.py` / `kaldi-native-fbank` / `sentencepiece` in old docs, those are gone — the STT stack is now `onnxruntime + tokenizers + modelscope + numpy`.
 
-**Future work / backlog** lives in [BACKLOG.md](docs/BACKLOG.md) under `docs/` — that file is the authoritative source of "what might be done next". Per-round `SUMMARY.md` files keep their "后续 TODO" sections but those are just notes from that round; anything worth actually remembering should be synced into `BACKLOG.md`.
+**Future work / backlog** is tracked in **GitHub Issues** ([open issues](https://github.com/pkulijing/daobidao/issues)). Each issue carries three labels: `type:*` / `area:*` / `priority:*` (P0 必须做、P1 重大新功能、P2 一般小功能小修复). [docs/BACKLOG.md](docs/BACKLOG.md) is a flat **index of currently-open items** for at-a-glance triage — body / discussion / cross-round context all live in the issue itself. When closing an issue via `Closes #N` in a PR, also delete its line from BACKLOG.md (don't tick, just remove — closed-issue history stays permanently in GitHub). New ideas during a round go straight to `gh issue create` (templates in `.github/ISSUE_TEMPLATE/`); per-round `SUMMARY.md` "后续 TODO" sections should reference an issue # rather than re-describing the idea inline.
 
 Platform-specific backends in `src/daobidao/backends/`:
 
