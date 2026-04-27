@@ -188,6 +188,11 @@ class WhisperInput:
             "error": None,
         }
 
+        # 模型下载管理(36 轮)— 设置页"模型管理"区域走它
+        from daobidao.stt.qwen3._download_manager import DownloadManager
+
+        self.download_manager = DownloadManager()
+
         # --- 流式识别(28 轮) ---
         # streaming_mode 是否开启;关的话走离线 transcribe()
         qwen3_cfg = config.get("qwen3", {})
@@ -612,11 +617,45 @@ class WhisperInput:
                 message=t(key),
             )
 
-    def preload_model(self) -> None:
-        """预加载模型(让首次按热键时不要卡在加载)。"""
+    def preload_model(self) -> bool:
+        """预加载模型(让首次按热键时不要卡在加载)。
+
+        如果配置的 variant 没下载,回退到 0.6B 临时跑(不改持久化配置 —
+        用户进设置页能看到"未下载"提示并主动下,下完后切回去)。0.6B 也
+        没下时返 False,跳过 preload(让用户进设置页主动下载)。
+        """
+        configured = getattr(self.stt, "variant", None)
+        if configured and not self.download_manager.is_variant_downloaded(
+            configured
+        ):
+            logger.warning(
+                "configured_variant_not_downloaded",
+                configured=configured,
+                message=(
+                    f"Configured variant {configured} not in cache; "
+                    f"checking 0.6B fallback"
+                ),
+            )
+            if self.download_manager.is_variant_downloaded("0.6B"):
+                # 临时切回 0.6B(不改持久化 config)
+                from daobidao.stt.qwen3 import Qwen3ASRSTT
+
+                self.stt = Qwen3ASRSTT(variant="0.6B")
+                logger.info("preload_fallback_to_0_6b", was=configured)
+            else:
+                logger.error(
+                    "no_variant_downloaded_skip_preload",
+                    message=(
+                        "Both 0.6B and configured variant missing; "
+                        "user must download via settings page"
+                    ),
+                )
+                self._notify_status("ready")
+                return False
         logger.info("model_preload_start", message=t("main.preload"))
         self.stt.load()
         self._notify_status("ready")
+        return True
 
     # ------------------------------------------------------------------
     # STT 热切换(设置页面"识别模型"下拉触发)
@@ -884,6 +923,7 @@ def main():
         on_config_changed=wi.on_config_changed,
         port=config.get("settings_port", 51230),
         stt_switch_status_getter=wi.stt_switch_status,
+        download_manager=wi.download_manager,
     )
     settings_server.start()
 

@@ -95,14 +95,10 @@ def _get_settings_html() -> str:
     return _load_settings_template().safe_substitute(
         hotkey_codes=json.dumps(SUPPORTED_KEY_CODES),
         hotkey_key=HOTKEY_CONFIG_KEY,
-        hotkey_default=(
-            "KEY_RIGHTMETA" if IS_MACOS else "KEY_RIGHTCTRL"
-        ),
+        hotkey_default=("KEY_RIGHTMETA" if IS_MACOS else "KEY_RIGHTCTRL"),
         version=__version__,
         commit=commit_html,
-        locale_data=json.dumps(
-            get_all_locales(), ensure_ascii=False
-        ),
+        locale_data=json.dumps(get_all_locales(), ensure_ascii=False),
         current_language=get_language(),
     )
 
@@ -148,6 +144,8 @@ class _SettingsHandler(BaseHTTPRequestHandler):
             self._handle_update_check()
         elif self.path == "/api/stt/switch_status":
             self._handle_stt_switch_status()
+        elif self.path == "/api/models/status":
+            self._handle_models_status()
         elif self.path == "/api/pid":
             # 单实例检测专用:新启动的实例用这个端点验证占了
             # settings_port 的进程"是不是我们自己的 daobidao",再决定是否
@@ -173,6 +171,10 @@ class _SettingsHandler(BaseHTTPRequestHandler):
             self._handle_update_apply()
         elif self.path == "/api/update/check/force":
             self._handle_update_check_force()
+        elif self.path == "/api/models/download":
+            self._handle_models_download()
+        elif self.path == "/api/models/cancel":
+            self._handle_models_cancel()
         else:
             self.send_error(404)
 
@@ -180,9 +182,7 @@ class _SettingsHandler(BaseHTTPRequestHandler):
         try:
             data = json.loads(self._read_body())
         except (json.JSONDecodeError, ValueError):
-            self._send_json(
-                {"error": t("server.invalid_json")}, 400
-            )
+            self._send_json({"error": t("server.invalid_json")}, 400)
             return
 
         config_mgr: ConfigManager = self.server.config_manager
@@ -216,9 +216,7 @@ class _SettingsHandler(BaseHTTPRequestHandler):
         try:
             data = json.loads(self._read_body())
         except (json.JSONDecodeError, ValueError):
-            self._send_json(
-                {"error": t("server.invalid_json")}, 400
-            )
+            self._send_json({"error": t("server.invalid_json")}, 400)
             return
 
         _set_autostart(data.get("enabled", False))
@@ -350,6 +348,83 @@ class _SettingsHandler(BaseHTTPRequestHandler):
         # 延迟重启，让响应先返回
         threading.Timer(0.5, do_restart).start()
 
+    # ------------------------------------------------------------------
+    # 模型管理 API（36 轮加）
+    # ------------------------------------------------------------------
+
+    def _handle_models_status(self) -> None:
+        """返回 0.6B / 1.7B 各自的下载状态。
+
+        无 ``download_manager`` 时返"两个 variant 都已下载"的 stub —— 这样
+        UI 不需要区分"支持下载管理的 / 不支持的"部署,前端逻辑统一。
+        """
+        mgr = getattr(self.server, "download_manager", None)
+        if mgr is None:
+            self._send_json(
+                {
+                    "variants": {
+                        "0.6B": _stub_variant_state(),
+                        "1.7B": _stub_variant_state(),
+                    }
+                }
+            )
+            return
+        try:
+            states = mgr.variant_states()
+        except Exception as exc:  # pragma: no cover - 防御
+            logger.exception("models_status_failed")
+            self._send_json({"error": str(exc)}, 500)
+            return
+        self._send_json({"variants": states})
+
+    def _handle_models_download(self) -> None:
+        mgr = getattr(self.server, "download_manager", None)
+        if mgr is None:
+            self._send_json({"ok": False, "reason": "unsupported"}, 503)
+            return
+        try:
+            data = json.loads(self._read_body())
+        except (json.JSONDecodeError, ValueError):
+            self._send_json({"error": t("server.invalid_json")}, 400)
+            return
+        variant = data.get("variant")
+        if not variant:
+            self._send_json({"error": "missing variant"}, 400)
+            return
+        accepted, reason = mgr.start(variant)
+        self._send_json({"ok": bool(accepted), "reason": reason})
+
+    def _handle_models_cancel(self) -> None:
+        mgr = getattr(self.server, "download_manager", None)
+        if mgr is None:
+            self._send_json({"ok": False, "reason": "unsupported"}, 503)
+            return
+        try:
+            data = json.loads(self._read_body())
+        except (json.JSONDecodeError, ValueError):
+            self._send_json({"error": t("server.invalid_json")}, 400)
+            return
+        variant = data.get("variant")
+        if not variant:
+            self._send_json({"error": "missing variant"}, 400)
+            return
+        ok = mgr.cancel(variant)
+        self._send_json({"ok": bool(ok)})
+
+
+def _stub_variant_state() -> dict:
+    """无 DownloadManager 时的占位状态(默认两 variant 都标已下载)。"""
+    return {
+        "downloaded": True,
+        "downloading": False,
+        "received_bytes": 0,
+        "total_bytes": 0,
+        "speed_bps": 0.0,
+        "eta_seconds": 0,
+        "error": None,
+        "cancelled": False,
+    }
+
 
 class SettingsServer:
     """设置页面 Web 服务器，在后台线程中运行。"""
@@ -360,10 +435,12 @@ class SettingsServer:
         on_config_changed=None,
         port: int = 51230,
         stt_switch_status_getter=None,
+        download_manager=None,
     ):
         self._config_manager = config_manager
         self._on_config_changed = on_config_changed
         self._stt_switch_status_getter = stt_switch_status_getter
+        self._download_manager = download_manager
         self._server: HTTPServer | None = None
         self._thread: threading.Thread | None = None
         self._port: int = port
@@ -377,9 +454,8 @@ class SettingsServer:
         self._server.config_manager = self._config_manager
         self._server.on_config_changed = self._on_config_changed
         self._server.update_checker = self._update_checker
-        self._server.stt_switch_status_getter = (
-            self._stt_switch_status_getter
-        )
+        self._server.stt_switch_status_getter = self._stt_switch_status_getter
+        self._server.download_manager = self._download_manager
 
         self._thread = threading.Thread(
             target=self._server.serve_forever,

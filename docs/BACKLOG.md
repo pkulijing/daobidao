@@ -18,6 +18,7 @@
   - [跟随系统默认输入设备切换](#跟随系统默认输入设备切换)
   - [流式 preview 浮窗显示 pending](#流式-preview-浮窗显示-pending)
   - [STT 模型按需可视化下载 + 已下载状态感知](#stt-模型按需可视化下载--已下载状态感知)
+  - [模型管理加「删除」按钮](#模型管理加删除按钮)
   - [流式 worker 落后于音频时的 backpressure 提示](#流式-worker-落后于音频时的-backpressure-提示)
 - [代码质量](#代码质量)
   - [1.7B 端到端测试在非 Linux x86 上不稳定](#17b-端到端测试在非-linux-x86-上不稳定)
@@ -192,6 +193,32 @@
 - **`--init` 命令行也该支持选 variant**:`daobidao --init --variant 1.7B`,不阻塞这一轮但可以顺手做
 
 **scope**:中。后端 ~150 行(含 DownloadManager + 两条端点 + spike 验证) + 前端 ~80 行(状态渲染 + 进度轮询 + 按钮态切换)+ 3 份 locale 各 6-8 条新字符串。**关键前置是 modelscope 是否暴露进度回调的 spike**,半小时内能验明;如果不暴露需要绕开 modelscope 自己 HTTP 下载,scope 再翻 50%。优先级**高** —— 这是 26 轮的直接遗留,用户视角看就是"买了个坏的下拉"。
+
+---
+
+### 模型管理加「删除」按钮
+
+**动机**:36 轮"模型管理"卡片做了下载流程,但**没有删除入口** —— 用户想腾磁盘空间(1.7B 占 2.4GB)、或者下了之后发现 1.7B 不好用想换回 0.6B,目前只能命令行 `rm -rf ~/.cache/modelscope/.../model_{variant}/`。从 UX 对称感看,"下载"按钮天然该有"删除"配对,缺这块卡片"感觉缺点东西"。
+
+**目标状态**:
+- 已下载的 variant 旁边加"删除"按钮(跟"下载"按钮位置对称,只显示其中一个)
+- 点击 → 确认弹窗(避免误删)
+- **当前 active variant 不允许删**(防止删了下次按热键挂);UI 上"删除"按钮直接置灰 + tooltip 解释,后端也拦截
+- 删除完成 → cache 状态自动刷新 → 下拉里这条 variant 自动 disabled → 用户可以重新点"下载"重下
+
+**候选方向**:
+- **后端**:`DownloadManager` 加 `delete(variant) -> tuple[bool, str|None]` 方法,内部 `shutil.rmtree(cache_root / f"model_{variant}/")`,再调一遍 `is_variant_downloaded` 让 `ModelFileSystemCache` 索引顺便反映清理。`tokenizer/` 是两个 variant 共享的**绝对不动**。`settings_server.py` 加 `POST /api/models/delete`(body `{variant}`),逻辑跟 download/cancel 端点同一套
+- **前端**:`refreshModelStatus` 渲染时,`downloaded && !active` → 显示删除按钮;active → 灰按钮 + tooltip "当前模型不能删除,请先切换到另一个 variant"
+- **active 判定**:读 config.qwen3.variant 还是直接看 `WhisperInput.stt.variant`?后者更准但需要把 active variant 也透到 settings_server。前者简单,但 hot-switch 期间会有短暂错配 —— 倾向**后者**,加一个 callable getter 类似 `stt_switch_status_getter` 模式
+
+**风险 / 注意点**:
+- **误删 active**:必须前后端双拦截
+- **正在下载时点删除**:边界 case 不该出现(downloading 时按钮逻辑应该让 download/cancel 显示,不显示 delete),但后端要兜住:`delete()` 时持锁检查 `_active_variant`,若等于该 variant 拒绝
+- **删除时 modelscope 索引 stale**:`ModelFileSystemCache.get_file_by_path` 自带磁盘一致性兜底(`os.path.exists` 失败时清索引),所以 rmtree 后下次 `is_variant_downloaded` 会自动 False。**不用我们手动写 `.mcs`**
+- **共享 tokenizer**:`shutil.rmtree(cache_root / f"model_{variant}/")` 作用域只在 model_{variant}/,不会误删 tokenizer/
+- **3 语 i18n**:`model_delete_btn` / `model_delete_confirm_title` / `model_delete_confirm_body` / `model_delete_failed` / `model_delete_active_hint` 等约 5-6 条新 key
+
+**scope**:小到中。后端 ~30 行 + 端点 ~25 行 + 前端 ~40 行(按钮 + 确认弹窗 + 联动状态)+ 三语 i18n 各 5-6 条 + 测试 ~80 行(`test_download_manager.py` 加 delete 用例 + `test_settings_server_models.py` 加端点用例)= **半天**。无前置 spike,逻辑跟 36 轮 download/cancel 对称,可直接照抄套路。
 
 ---
 

@@ -140,6 +140,33 @@
     border: 1px solid var(--border);
   }
   .btn-danger:hover { background: #fef2f2; }
+  .btn-sm {
+    padding: 6px 16px;
+    font-size: 13px;
+  }
+  /* 模型管理卡片(36 轮) */
+  .progress-wrapper { margin-top: 8px; max-width: 360px; }
+  .progress-bar {
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: var(--primary);
+    width: 0%;
+    transition: width 0.25s ease;
+  }
+  .progress-meta {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+  }
+  .model-actions { display: flex; gap: 8px; align-items: center; }
+  .model-status.status-error { color: #d32f2f; }
+  .model-status.status-downloaded { color: var(--success); }
+  .model-status.status-downloading { color: var(--primary); }
   .notice {
     font-size: 13px;
     color: var(--text-secondary);
@@ -281,6 +308,53 @@
         <option value="en">English</option>
         <option value="fr">Français</option>
       </select>
+    </div>
+  </div>
+
+  <!-- 模型管理(36 轮) -->
+  <div class="card" id="model_manager_card">
+    <div class="card-title" data-i18n="settings.model_manager">模型管理</div>
+    <div class="setting-row" data-variant="0.6B">
+      <div style="flex: 1; min-width: 0;">
+        <div class="setting-label">0.6B
+          <span style="color: var(--text-secondary); font-weight: normal;"
+                data-i18n="settings.model_size_0_6b">(约 990 MB)</span>
+        </div>
+        <div class="setting-desc model-status">—</div>
+        <div class="progress-wrapper" style="display:none;">
+          <div class="progress-bar"><div class="progress-fill"></div></div>
+          <div class="progress-meta">—</div>
+        </div>
+      </div>
+      <div class="model-actions">
+        <button class="btn btn-primary btn-sm download-btn"
+                style="display:none;"
+                data-i18n="settings.model_download_btn">下载</button>
+        <button class="btn btn-danger btn-sm cancel-btn"
+                style="display:none;"
+                data-i18n="settings.model_cancel_btn">取消</button>
+      </div>
+    </div>
+    <div class="setting-row" data-variant="1.7B">
+      <div style="flex: 1; min-width: 0;">
+        <div class="setting-label">1.7B
+          <span style="color: var(--text-secondary); font-weight: normal;"
+                data-i18n="settings.model_size_1_7b">(约 2.4 GB)</span>
+        </div>
+        <div class="setting-desc model-status">—</div>
+        <div class="progress-wrapper" style="display:none;">
+          <div class="progress-bar"><div class="progress-fill"></div></div>
+          <div class="progress-meta">—</div>
+        </div>
+      </div>
+      <div class="model-actions">
+        <button class="btn btn-primary btn-sm download-btn"
+                style="display:none;"
+                data-i18n="settings.model_download_btn">下载</button>
+        <button class="btn btn-danger btn-sm cancel-btn"
+                style="display:none;"
+                data-i18n="settings.model_cancel_btn">取消</button>
+      </div>
     </div>
   </div>
 
@@ -755,6 +829,186 @@ function bindAutoSave() {
   });
 }
 
+// ── 模型管理(36 轮) ──────────────────────────────────────────────
+var _modelPollTimer = null;
+
+function _formatBytes(n) {
+  if (!n || n <= 0) return '0 MB';
+  if (n >= 1e9) return (n / 1e9).toFixed(2) + ' GB';
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + ' MB';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + ' KB';
+  return n + ' B';
+}
+
+function _formatEta(seconds) {
+  if (!seconds || seconds <= 0) return '—';
+  if (seconds >= 3600) return Math.floor(seconds / 3600) + 'h '
+    + Math.floor((seconds % 3600) / 60) + 'm';
+  if (seconds >= 60) return Math.floor(seconds / 60) + 'm '
+    + (seconds % 60) + 's';
+  return seconds + 's';
+}
+
+function _renderVariantRow(variant, state) {
+  var row = document.querySelector(
+    '#model_manager_card [data-variant="' + variant + '"]'
+  );
+  if (!row) return;
+  var statusEl = row.querySelector('.model-status');
+  var progressEl = row.querySelector('.progress-wrapper');
+  var fillEl = row.querySelector('.progress-fill');
+  var metaEl = row.querySelector('.progress-meta');
+  var dlBtn = row.querySelector('.download-btn');
+  var caBtn = row.querySelector('.cancel-btn');
+
+  // 状态文本与颜色
+  statusEl.classList.remove(
+    'status-downloaded', 'status-downloading', 'status-error'
+  );
+  if (state.error) {
+    statusEl.textContent =
+      i18n('settings.model_download_failed') + ': ' + state.error;
+    statusEl.classList.add('status-error');
+  } else if (state.downloading) {
+    statusEl.textContent = i18n('settings.model_status_downloading');
+    statusEl.classList.add('status-downloading');
+  } else if (state.downloaded) {
+    statusEl.textContent = i18n('settings.model_status_downloaded');
+    statusEl.classList.add('status-downloaded');
+  } else if (state.cancelled) {
+    statusEl.textContent = i18n('settings.model_download_cancelled');
+  } else {
+    statusEl.textContent = i18n('settings.model_status_not_downloaded');
+  }
+
+  // 进度条
+  if (state.downloading && state.total_bytes > 0) {
+    progressEl.style.display = '';
+    var pct = Math.min(
+      100, (state.received_bytes / state.total_bytes) * 100
+    );
+    fillEl.style.width = pct.toFixed(1) + '%';
+    metaEl.textContent =
+      _formatBytes(state.received_bytes) + ' / '
+      + _formatBytes(state.total_bytes) + ' · '
+      + _formatBytes(state.speed_bps) + '/s · '
+      + _formatEta(state.eta_seconds);
+  } else if (state.downloading) {
+    // total 未知,显示 indeterminate 文字
+    progressEl.style.display = '';
+    fillEl.style.width = '50%';
+    metaEl.textContent = _formatBytes(state.received_bytes) + ' · '
+      + _formatBytes(state.speed_bps) + '/s';
+  } else {
+    progressEl.style.display = 'none';
+  }
+
+  // 按钮
+  dlBtn.style.display =
+    (!state.downloading && !state.downloaded) ? '' : 'none';
+  caBtn.style.display = state.downloading ? '' : 'none';
+}
+
+function _updateSttDropdownDisabled(variants) {
+  var sel = document.getElementById('stt_variant');
+  Array.prototype.forEach.call(sel.options, function(opt) {
+    var v = variants[opt.value];
+    if (v && !v.downloaded) {
+      opt.disabled = true;
+      opt.title = i18n('settings.stt_variant_disabled_hint');
+    } else {
+      opt.disabled = false;
+      opt.title = '';
+    }
+  });
+}
+
+async function refreshModelStatus() {
+  try {
+    var res = await fetch('/api/models/status');
+    var data = await res.json();
+    if (!data.variants) return;
+    _renderVariantRow('0.6B', data.variants['0.6B']);
+    _renderVariantRow('1.7B', data.variants['1.7B']);
+    _updateSttDropdownDisabled(data.variants);
+    return data.variants;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function pollDownloadStatus() {
+  var variants = await refreshModelStatus();
+  if (!variants) {
+    _modelPollTimer = setTimeout(pollDownloadStatus, 1000);
+    return;
+  }
+  var anyDownloading =
+    (variants['0.6B'] && variants['0.6B'].downloading)
+    || (variants['1.7B'] && variants['1.7B'].downloading);
+  if (anyDownloading) {
+    _modelPollTimer = setTimeout(pollDownloadStatus, 500);
+  } else {
+    _modelPollTimer = null;
+    // 最后再 refresh 一次确保状态收敛
+    await refreshModelStatus();
+  }
+}
+
+async function startModelDownload(variant) {
+  try {
+    var res = await fetch('/api/models/download', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({variant: variant})
+    });
+    var data = await res.json();
+    if (!data.ok) {
+      var reasonKey = 'settings.model_download_' + (data.reason || 'failed');
+      showToast(i18n(reasonKey), 3000);
+      return;
+    }
+    // 立刻拉一次状态再起轮询
+    if (_modelPollTimer) {
+      clearTimeout(_modelPollTimer);
+      _modelPollTimer = null;
+    }
+    pollDownloadStatus();
+  } catch (e) {
+    showToast(i18n('settings.model_download_failed'), 3000);
+  }
+}
+
+async function cancelModelDownload(variant) {
+  try {
+    await fetch('/api/models/cancel', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({variant: variant})
+    });
+    // 等 worker 收尾,refreshModelStatus 由 polling 顺便覆盖
+  } catch (_) {}
+}
+
+function bindModelManagement() {
+  document
+    .querySelectorAll('#model_manager_card .download-btn')
+    .forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var row = btn.closest('[data-variant]');
+        if (row) startModelDownload(row.dataset.variant);
+      });
+    });
+  document
+    .querySelectorAll('#model_manager_card .cancel-btn')
+    .forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var row = btn.closest('[data-variant]');
+        if (row) cancelModelDownload(row.dataset.variant);
+      });
+    });
+}
+
 // ── 麦克风检测 ────────────────────────────────────────────────────
 var _micStream = null;
 var _micAnalyser = null;
@@ -901,6 +1155,8 @@ function toggleMicRecord() {
 applyLocale(currentLang);
 loadConfig().then(function() {
   bindAutoSave();
+  bindModelManagement();
+  refreshModelStatus();
   initMicCheck();
   checkUpdate();
 });
