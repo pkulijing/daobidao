@@ -44,7 +44,7 @@ uv run python -m daobidao
 uv run ruff check .
 
 # Tests (round 15 framework, expanded in round 26)
-uv run pytest                                # full suite, 430 cases, ~5min (incl. real Qwen3 0.6B + 1.7B smoke), prints coverage
+uv run pytest                                # full suite, 434 cases, ~5min (incl. real Qwen3 0.6B + 1.7B smoke), prints coverage
 uv run pytest tests/test_qwen3_asr.py -v     # one file
 uv run pytest --cov-report=term-missing      # show un-hit lines
 uv run pytest --cov-report=html              # generate htmlcov/index.html
@@ -60,7 +60,7 @@ Test scope (`tests/`): `config_manager` (including the sensevoice→qwen3 auto-m
 
 Coverage (round 37): overall ~70% line coverage (61% before round 37, 51% before round 26). The `stt/qwen3/` subpackage is 100% covered across all 8 modules. `config_manager` / `autostart_*` 90-100%, `settings_server` ~90%, `hotkey_*` state machine 54% (only listen loops / `start` / `stop` missing). The uncovered remainder is mostly `__main__.main()` CLI wiring (lines 429-665), `recorder.py`, `overlay_*.py` — all deliberate gaps, predating round 26.
 
-The STT smoke tests download ~990 MB of ONNX + tokenizer for the 0.6B variant (and optionally ~2.4 GB for 1.7B) under `~/.cache/modelscope/` on first run (exact layout is modelscope's business and differs between versions — see the note below). CI caches via `actions/cache@v4` keyed on `modelscope-qwen3-asr-v1` (bump to invalidate). Locally the model is usually already cached from running `daobidao` itself; if not, expect the first `pytest` invocation to be slow. Point `DAOBIDAO_QWEN3_DIR` at a pre-downloaded bundle to bypass ModelScope entirely in tests.
+The STT smoke tests download ~990 MB of ONNX + tokenizer for the 0.6B variant (and optionally ~2.4 GB for 1.7B) under `~/.cache/modelscope/` on first run (exact layout is modelscope's business and differs between versions — see the note below). CI caches via `actions/cache@v5` keyed on `modelscope-qwen3-asr-v1` (bump to invalidate). Locally the model is usually already cached from running `daobidao` itself; if not, expect the first `pytest` invocation to be slow. Point `DAOBIDAO_QWEN3_DIR` at a pre-downloaded bundle to bypass ModelScope entirely in tests.
 
 For STT sanity check, instantiate `daobidao.stt.qwen3.Qwen3ASRSTT(variant="0.6B")` and feed it a 16 kHz mono WAV.
 
@@ -124,7 +124,19 @@ Key modules (all paths relative to `src/daobidao/`):
 
 ## Ruff Configuration
 
-Configured in `pyproject.toml` with rules: I (isort), N (pep8-naming), UP (pyupgrade), B (flake8-bugbear), SIM (flake8-simplify), RUF. Ignores RUF001/RUF002/RUF003 (Unicode punctuation). Line length: 80.
+Configured in `pyproject.toml`. Line length 80.
+
+**`select`, not `extend-select`** — deliberate. `extend-select` adds to *ruff's own default set*, which grows between releases: ruff 0.16 promoted a batch of rules into the default set and the project went red by 36 with nobody touching the code. Under `select` the rule set is entirely ours, so upgrading ruff only changes how already-selected rules behave — it can't add a whole new category. Don't change it back.
+
+Selected: `E` / `F` / `W` (pycodestyle + pyflakes), `I` (isort), `N` (pep8-naming), `UP` (pyupgrade), `B` (bugbear), `SIM`, `C4`, `RUF`, `PIE`, `PERF`, `ISC`, `EXE`, plus pylint's `PLC` / `PLE` / `PLW` (deliberately no `PLR` — those are refactor opinions).
+
+Ignored, each for a reason: `RUF001` / `RUF002` / `RUF003` (full-width punctuation is normal in a Chinese project), `E501` (long lines are `ruff format`'s job), `PLC0415` (function-level imports are the lazy-import design described above — the STT factory, `__main__`, and the platform backends all rely on it). `BLE` is **not selected at all**: all 8 blind excepts are intentional — 3 ferry an exception across a thread boundary, 5 are shutdown / cleanup / HTTP-handler catch-alls.
+
+`extend-exclude = ["docs"]` — ruff 0.16 started formatting Python code blocks inside Markdown, and `docs/` holds per-round snapshots that a later formatter must not rewrite.
+
+`PLW1510` means every `subprocess.run` carries an explicit `check=`. It is a real decision each time, not boilerplate: `check=True` where a silent non-zero would lose user data (the clipboard-paste path), `check=False` where the caller inspects `returncode` itself or the call is genuinely best-effort (TCC resets, clipboard restore).
+
+The ruff version has **three** sources that must stay in sync — `uv.lock`, the `ruff>=` floor in `[dependency-groups] dev`, and `rev:` in `.pre-commit-config.yaml`. CI runs `uv run ruff check .` rather than `uvx` so it uses the locked version.
 
 ## Dependencies
 
