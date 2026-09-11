@@ -1,7 +1,7 @@
 """PyPI 更新检查与触发 —— 查询最新版本 + 跑 `uv tool upgrade`。
 
 所有网络 / 子进程调用都是同步的，外面由 UpdateChecker 包后台线程（保持与
-整个项目 threading + 阻塞 IO 的一致；future work 见 BACKLOG 的 asyncio 迁移）。
+整个项目 threading + 阻塞 IO 的一致；future work 见 issue #9 的 asyncio 迁移）。
 
 只支持 uv tool 装的场景（项目唯一官方分发路径），点按钮直接跑
 `uv tool upgrade daobidao`。dev 模式的 `__version__ == "dev"` 不是

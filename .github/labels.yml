@@ -1,0 +1,66 @@
+# GitHub Issues 三轴 label 集合：type / area / priority，外加归档用的 wontfix。
+# bootstrap / sync-project-config 会读此文件后调 `gh label create --force` 写到 GitHub。
+#
+# - type 与 priority 是项目无关的，全集如下，不要删
+# - area 是本项目特异的，对应 src/daobidao/ 的模块划分
+# - wontfix 用于「刻意决定不做」的归档 closed issue（见 /finish Step 2），
+#   颜色 / 描述沿用 GitHub 默认，避免 sync 时把仓库既有 label 重新染色
+#
+# 本文件写的是**仓库当前实况**而非模板默认配色 —— 模板的 type:* 配色与本仓已有的
+# 不一致，照抄会把 4 个用了一年的 label 重新染色，纯属无谓变更。
+
+# ---------- type ----------
+- name: "type:feat"
+  color: "0e8a16"
+  description: "新功能 / feature"
+- name: "type:bug"
+  color: "d73a4a"
+  description: "bug 修复"
+- name: "type:refactor"
+  color: "5319e7"
+  description: "重构,不改外部行为"
+- name: "type:perf"
+  color: "fbca04"
+  description: "性能优化"
+- name: "type:test"
+  color: "c5def5"
+  description: "测试基础设施 / 用例补强"
+- name: "type:docs"
+  color: "0075ca"
+  description: "文档"
+
+# ---------- priority ----------
+- name: "priority:P0"
+  color: "b60205"
+  description: "必须做,不做有重大风险"
+- name: "priority:P1"
+  color: "d93f0b"
+  description: "重大新功能,做了有很大提升"
+- name: "priority:P2"
+  color: "fbca04"
+  description: "一般小功能 / 小修复"
+
+# ---------- area ----------
+- name: "area:stt"
+  color: "1d76db"
+  description: "STT / 模型 / ONNX 推理"
+- name: "area:ui"
+  color: "d4c5f9"
+  description: "设置页 / overlay / 系统托盘"
+- name: "area:backend"
+  color: "006b75"
+  description: "后端架构 / 录音 / 输入设备 / 输入法"
+- name: "area:packaging"
+  color: "bfdadc"
+  description: "PyPI / autostart / 安装升级"
+- name: "area:test"
+  color: "fef2c0"
+  description: "测试套件本身"
+- name: "area:devexp"
+  color: "c2e0c6"
+  description: "开发者体验 / CI / 工具链"
+
+# ---------- 归档 ----------
+- name: "wontfix"
+  color: "ffffff"
+  description: "This will not be worked on"

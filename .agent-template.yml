@@ -1,0 +1,68 @@
+template_commit: e64049f5869029976921920d6294e757999b9b19
+bootstrap_time: 2026-04-27T15:32:17Z
+source: git@github.com:pkulijing/claude-code-global.git
+stacks:
+  - stack: python-uv
+    path: .
+    variants: {}
+    skipped:
+      # 本条 skip 于 da2af18 做出，本轮复检模板侧无新改动，沿用原决定。
+      - source: python-uv
+        file: __root__/.github/workflows/lint.yml
+        skipped_at_commit: e64049f5869029976921920d6294e757999b9b19
+        reason: build.yml 已包含 `uvx ruff check .` 且只监听 feature 分支 + PR；模板 lint.yml 默认监听 master push 跟项目「master 不重新跑 check」的设计冲突，纯冗余。
+
+      # 项目侧已有更具体的版本：area 那行写死了本仓 6 个真实 area
+      # （stt/ui/backend/packaging/test/devexp），模板版是 `<请填本项目 area: 标签>`
+      # 占位。take 模板等于让文档倒退。
+      - source: _common
+        file: __root__/.github/ISSUE_TEMPLATE/bug.md
+        skipped_at_commit: e64049f5869029976921920d6294e757999b9b19
+        reason: 项目侧已有同名文件且 area 占位已按本仓实际模块填实，模板版更泛化。
+      - source: _common
+        file: __root__/.github/ISSUE_TEMPLATE/feat.md
+        skipped_at_commit: e64049f5869029976921920d6294e757999b9b19
+        reason: 同 bug.md。
+      - source: _common
+        file: __root__/.github/ISSUE_TEMPLATE/spike.md
+        skipped_at_commit: e64049f5869029976921920d6294e757999b9b19
+        reason: 同 bug.md。
+
+      # 本仓 origin 是 GitHub，GitLab 那套 issue 模板与 CI 配置落下来是死文件。
+      - source: _common
+        file: __root__/.gitlab/issue_templates/bug.md
+        skipped_at_commit: e64049f5869029976921920d6294e757999b9b19
+        reason: 本仓托管在 GitHub，无 GitLab 远端。
+      - source: _common
+        file: __root__/.gitlab/issue_templates/feat.md
+        skipped_at_commit: e64049f5869029976921920d6294e757999b9b19
+        reason: 同上。
+      - source: _common
+        file: __root__/.gitlab/issue_templates/spike.md
+        skipped_at_commit: e64049f5869029976921920d6294e757999b9b19
+        reason: 同上。
+      - source: python-uv
+        file: __root__/.gitlab-ci.yml.variant.docker
+        skipped_at_commit: e64049f5869029976921920d6294e757999b9b19
+        reason: 变体组整组不落地——本仓 CI 走 GitHub Actions（.github/workflows/），无 GitLab CI。
+      - source: python-uv
+        file: __root__/.gitlab-ci.yml.variant.shell
+        skipped_at_commit: e64049f5869029976921920d6294e757999b9b19
+        reason: 同上。
+
+      - source: python-uv
+        file: __root__/.vscode/settings.json.fragment
+        skipped_at_commit: e64049f5869029976921920d6294e757999b9b19
+        reason: 项目侧 .vscode/settings.json 用的是 ruff 扩展的精确键 source.fixAll.ruff / source.organizeImports.ruff，模板是通用的 source.fixAll / source.organizeImports；深合并会让两套并存、保存时跑两遍 fix。
+      - source: python-uv
+        file: __subpath__/pyproject.toml.pytest.fragment
+        skipped_at_commit: e64049f5869029976921920d6294e757999b9b19
+        reason: 只差 pythonpath = ["src"]。本仓靠 uv sync 把自己 editable 装进去，该键冗余；更坏的是 wheel 打包配置一旦断掉，它会让测试仍然全绿、掩盖真问题。testpaths 项目侧已有。
+      - source: python-uv
+        file: __subpath__/configs/.gitkeep
+        skipped_at_commit: e64049f5869029976921920d6294e757999b9b19
+        reason: 本仓无 configs/ 约定（配置走 config_manager + ~/.config/daobidao/），空目录是噪音。
+      - source: python-uv
+        file: __subpath__/tests/test_smoke.py
+        skipped_at_commit: e64049f5869029976921920d6294e757999b9b19
+        reason: 那是空项目的 assert True 占位，本仓已有 430 条真测试。

@@ -84,6 +84,13 @@ packages = ["src/daobidao"]
 [tool.hatch.build.hooks.custom]
 path = "scripts/hatch_build.py"
 
+# python-preference = "only-managed"：强制 uv 只用自己托管的 standalone python、
+# 忽略系统 python。避免系统 python 缺 dev 头文件（Python.h）时含 C 扩展的依赖
+# （如 evdev）编译失败；配合默认 python-downloads=automatic，无满足要求的托管版
+# 时会自动下载一份自带头文件的 standalone python。
+[tool.uv]
+python-preference = "only-managed"
+
 [[tool.uv.index]]
 name = "tuna"
 url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"
