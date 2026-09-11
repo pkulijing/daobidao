@@ -1,6 +1,7 @@
 """Audio recorder using sounddevice."""
 
 import io
+import os
 import subprocess
 import sys
 import threading
@@ -27,6 +28,14 @@ _OVERFLOW_DEVICE_LOST_THRESHOLD = 5
 # 32 轮:pactl 调用超时(s)。本机实测 ~50ms,留 10 倍裕量。
 _PACTL_TIMEOUT_S = 0.5
 
+# 37 轮:pactl 的输出是**本地化**的 —— 中文桌面(LANG=zh_CN.UTF-8)下字段名
+# 变成「名称：」「端口：」「活动端口：」,下面那个只认英文字段名的解析器
+# 一条都匹配不上,判成"没有可用输入端口",麦克风永远探测不到。
+# 解析机器输出就必须锁死 locale,不能跟着用户桌面语言走。
+# LC_ALL=C 已能压过 gettext 的 LANGUAGE 优先级(mypc 实测),LANGUAGE=""
+# 是零成本的双保险。
+_PACTL_LOCALE_ENV = {"LC_ALL": "C", "LANGUAGE": ""}
+
 
 class PactlUnavailableError(RuntimeError):
     """``pactl`` 命令本身不可用(没装 / 调用失败 / 输出无法解析)。
@@ -47,6 +56,10 @@ def _check_pactl_input_available() -> bool:
     (无论物理麦在不在),``sd.query_devices`` 区分不出"真没麦",所以
     Linux 上本函数是 probe 的**唯一权威**(docs/32-录音麦克风离线检测/)。
 
+    **本函数解析的是给机器读的输出,故强制在 C locale 下取**(见
+    ``_PACTL_LOCALE_ENV``):pactl 的字段名会跟着用户桌面语言翻译,
+    下面的匹配只认英文字段名。改这里的 locale 锁定,解析这一侧要同步改。
+
     Returns:
         True   - 至少一个 alsa_input.* source 的某 port 是 available 或
                  availability unknown(后者:无 jack-detect 电路的内置 mic)
@@ -59,12 +72,16 @@ def _check_pactl_input_available() -> bool:
                           ``pulseaudio-utils`` 包(setup.sh / install.sh
                           的 APT_PKGS 已默认包含)。
     """
+    # env= 是整体替换而非叠加,必须从 os.environ 拷一份基底:
+    # XDG_RUNTIME_DIR / PULSE_SERVER 丢了 pactl 就连不上音频服务器。
+    env = {**os.environ, **_PACTL_LOCALE_ENV}
     try:
         proc = subprocess.run(
             ["pactl", "list", "sources"],
             capture_output=True,
             text=True,
             timeout=_PACTL_TIMEOUT_S,
+            env=env,
         )
     except FileNotFoundError as exc:
         raise PactlUnavailableError("pactl command not found") from exc

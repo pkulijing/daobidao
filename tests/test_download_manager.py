@@ -1,14 +1,17 @@
 """DownloadManager 单元测试 — 36 轮"模型管理与可视化下载"。
 
-测试策略:全部 monkeypatch ``modelscope.snapshot_download`` 和
-``ModelFileSystemCache.get_file_by_path``,不真下网络。snapshot_download
-mock 让它**手动驱动 progress_callbacks 序列**(实例化 callback class →
-跑一系列 update(chunk) → end),这样 DownloadManager 行为可重复验证。
+测试策略:全部 monkeypatch ``modelscope.snapshot_download``,不真下网络;
+"下过没有"的判定 37 轮起只看磁盘,所以用 tmp 目录铺真文件来测。
+snapshot_download mock 让它**手动驱动 progress_callbacks 序列**(实例化
+callback class → 跑一系列 update(chunk) → end),这样 DownloadManager
+行为可重复验证。
 """
 
 from __future__ import annotations
 
 from unittest.mock import patch
+
+import pytest
 
 from daobidao.stt.qwen3._download_manager import (
     REQUIRED_FILES,
@@ -59,48 +62,10 @@ def test_required_files_covers_both_variants() -> None:
         assert any("decoder.int8.onnx" in f for f in files)
 
 
-def test_is_variant_downloaded_true_when_all_files_present() -> None:
-    """所有必需文件都被 cache 索引指向有效路径 → True。"""
-    mgr = DownloadManager()
-    with patch.object(
-        mgr,
-        "_cache_lookup",
-        return_value="/fake/path/some_file.onnx",
-    ):
-        assert mgr.is_variant_downloaded("0.6B") is True
-
-
-def test_is_variant_downloaded_false_when_any_file_missing() -> None:
-    """任一必需文件 lookup 返 None → False。"""
-    mgr = DownloadManager()
-    # 第一次返路径,第二次返 None(模拟某个文件被手动 rm 后 cache 索引兜底)
-    return_values = iter(["/fake/path/a.onnx", None, None, None, None, None])
-
-    def fake_lookup(_path: str) -> str | None:
-        return next(return_values)
-
-    with patch.object(mgr, "_cache_lookup", side_effect=fake_lookup):
-        assert mgr.is_variant_downloaded("0.6B") is False
-
-
 def test_is_variant_downloaded_invalid_variant() -> None:
     """非法 variant → False(防御性,避免上层崩)。"""
     mgr = DownloadManager()
     assert mgr.is_variant_downloaded("99B") is False
-
-
-def test_variant_states_reflects_cache_check() -> None:
-    """variant_states 返回的 downloaded 字段应该实时反映 cache 检查结果。"""
-    mgr = DownloadManager()
-    with patch.object(mgr, "_cache_lookup", return_value="/fake/path"):
-        states = mgr.variant_states()
-        assert states["0.6B"]["downloaded"] is True
-        assert states["1.7B"]["downloaded"] is True
-
-    with patch.object(mgr, "_cache_lookup", return_value=None):
-        states = mgr.variant_states()
-        assert states["0.6B"]["downloaded"] is False
-        assert states["1.7B"]["downloaded"] is False
 
 
 # ----------------------------------------------------------------------------
@@ -117,7 +82,7 @@ def test_start_invalid_variant_returns_invalid_reason() -> None:
 
 def test_start_when_already_downloaded_is_noop() -> None:
     mgr = DownloadManager()
-    with patch.object(mgr, "_cache_lookup", return_value="/fake/path"):
+    with patch.object(mgr, "is_variant_downloaded", return_value=True):
         accepted, reason = mgr.start("0.6B")
     assert accepted is False
     assert reason == "already_downloaded"
@@ -147,7 +112,7 @@ def test_start_when_idle_sets_downloading_and_runs_thread() -> None:
 
     mgr = DownloadManager()
     with (
-        patch.object(mgr, "_cache_lookup", return_value=None),
+        patch.object(mgr, "is_variant_downloaded", return_value=False),
         patch(
             "daobidao.stt.qwen3._download_manager.snapshot_download",
             side_effect=fake_snapshot,
@@ -201,7 +166,7 @@ def test_progress_callback_passes_class_to_snapshot() -> None:
 
     mgr = DownloadManager()
     with (
-        patch.object(mgr, "_cache_lookup", return_value=None),
+        patch.object(mgr, "is_variant_downloaded", return_value=False),
         patch(
             "daobidao.stt.qwen3._download_manager.snapshot_download",
             side_effect=fake_snapshot,
@@ -238,7 +203,7 @@ def test_progress_callback_accumulates_bytes() -> None:
 
     mgr = DownloadManager()
     with (
-        patch.object(mgr, "_cache_lookup", return_value=None),
+        patch.object(mgr, "is_variant_downloaded", return_value=False),
         patch(
             "daobidao.stt.qwen3._download_manager.snapshot_download",
             side_effect=fake_snapshot,
@@ -275,7 +240,7 @@ def test_progress_callback_total_bytes_sum_across_files() -> None:
 
     mgr = DownloadManager()
     with (
-        patch.object(mgr, "_cache_lookup", return_value=None),
+        patch.object(mgr, "is_variant_downloaded", return_value=False),
         patch(
             "daobidao.stt.qwen3._download_manager.snapshot_download",
             side_effect=fake_snapshot,
@@ -361,7 +326,7 @@ def test_concurrent_start_returns_busy() -> None:
 
     mgr = DownloadManager()
     with (
-        patch.object(mgr, "_cache_lookup", return_value=None),
+        patch.object(mgr, "is_variant_downloaded", return_value=False),
         patch(
             "daobidao.stt.qwen3._download_manager.snapshot_download",
             side_effect=slow_snapshot,
@@ -416,7 +381,7 @@ def test_cancel_wrong_variant_returns_false() -> None:
 
     mgr = DownloadManager()
     with (
-        patch.object(mgr, "_cache_lookup", return_value=None),
+        patch.object(mgr, "is_variant_downloaded", return_value=False),
         patch(
             "daobidao.stt.qwen3._download_manager.snapshot_download",
             side_effect=slow_snapshot,
@@ -486,7 +451,7 @@ def test_cancel_marks_state_cancelled_and_clears_active() -> None:
 
     mgr = DownloadManager()
     with (
-        patch.object(mgr, "_cache_lookup", return_value=None),
+        patch.object(mgr, "is_variant_downloaded", return_value=False),
         patch(
             "daobidao.stt.qwen3._download_manager.snapshot_download",
             side_effect=fake_snapshot,
@@ -533,7 +498,7 @@ def test_start_propagates_snapshot_error_to_state() -> None:
 
     mgr = DownloadManager()
     with (
-        patch.object(mgr, "_cache_lookup", return_value=None),
+        patch.object(mgr, "is_variant_downloaded", return_value=False),
         patch(
             "daobidao.stt.qwen3._download_manager.snapshot_download",
             side_effect=fake_snapshot,
@@ -552,3 +517,195 @@ def test_start_propagates_snapshot_error_to_state() -> None:
         assert state["downloading"] is False
         assert state["error"] is not None
         assert "network down" in state["error"]
+
+
+# ====================================================================
+# cache_root 权威(37 轮)
+# ====================================================================
+#
+# 36 轮自己算 modelscope 的缓存落点(ModelFileSystemCache +
+# get_model_cache_root)。1.40 起 snapshot_download 委托给 modelscope_hub,
+# 落点由它内部在四种历史布局间探测决定,我们算不准 —— 实机上把明明在磁盘
+# 上的 0.6B 判成"未下载"。
+#
+# 37 轮改成:唯一可信的路径是 **modelscope 自己给出的那个** ——
+# Qwen3ASRSTT.load() 成功后的 cache_root,或 DownloadManager 自己那次
+# snapshot_download 的返回值。两个 variant 是同一 repo 下的兄弟目录,
+# 拿到 root 之后就只是 Path.exists(),零布局假设。
+
+
+def _make_cache(tmp_path, variants):
+    """在 tmp 里造一个 snapshot 目录,只铺给定 variant 的必需文件。"""
+    root = tmp_path / "snapshots" / "master"
+    for variant in variants:
+        for rel in REQUIRED_FILES[variant]:
+            f = root / rel
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_bytes(b"x")
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def test_downloaded_unknown_before_cache_root_known() -> None:
+    """还没 load 过、也没下载过 → 不知道,按未下载算(不瞎猜)。"""
+    mgr = DownloadManager()
+    assert mgr.cache_root is None
+    assert mgr.is_variant_downloaded("0.6B") is False
+
+
+def test_downloaded_true_when_files_exist_under_cache_root(tmp_path) -> None:
+    mgr = DownloadManager()
+    mgr.set_cache_root(_make_cache(tmp_path, ["0.6B"]))
+
+    assert mgr.is_variant_downloaded("0.6B") is True
+    assert mgr.is_variant_downloaded("1.7B") is False
+
+
+def test_downloaded_false_when_a_file_was_removed(tmp_path) -> None:
+    """用户在外面 rm 掉一个文件 → 下次查即 False。"""
+    root = _make_cache(tmp_path, ["0.6B", "1.7B"])
+    mgr = DownloadManager()
+    mgr.set_cache_root(root)
+    assert mgr.is_variant_downloaded("1.7B") is True
+
+    (root / REQUIRED_FILES["1.7B"][0]).unlink()
+    assert mgr.is_variant_downloaded("1.7B") is False
+
+
+def test_set_cache_root_accepts_none(tmp_path) -> None:
+    """load 没跑成时 cache_root 可能是 None,不能把已知的好值冲掉。"""
+    root = _make_cache(tmp_path, ["0.6B"])
+    mgr = DownloadManager()
+    mgr.set_cache_root(root)
+    mgr.set_cache_root(None)
+
+    assert mgr.cache_root == root
+    assert mgr.is_variant_downloaded("0.6B") is True
+
+
+def test_variant_states_uses_cache_root(tmp_path) -> None:
+    mgr = DownloadManager()
+    mgr.set_cache_root(_make_cache(tmp_path, ["0.6B"]))
+
+    states = mgr.variant_states()
+    assert states["0.6B"]["downloaded"] is True
+    assert states["1.7B"]["downloaded"] is False
+
+
+def test_worker_records_cache_root_from_snapshot_download(
+    tmp_path, monkeypatch
+) -> None:
+    """自己下完之后也要记下 snapshot_download 返回的真实路径。"""
+    root = _make_cache(tmp_path, ["1.7B"])
+    mgr = DownloadManager()
+
+    from daobidao.stt.qwen3 import _download_manager as mod
+
+    monkeypatch.setattr(mod, "snapshot_download", lambda *a, **k: str(root))
+    mgr._worker("1.7B")
+
+    assert mgr.cache_root == root
+    assert mgr.is_variant_downloaded("1.7B") is True
+
+
+# ====================================================================
+# loading() 互斥(37 轮 review 补)
+# ====================================================================
+#
+# 首启且配置的 variant 本地没有时,preload 会在主线程同步跑 snapshot_download
+# (分钟级)。这期间 settings server 已经在服务了,而 cache_root 还是 None →
+# 设置页显示"未下载" → 用户点「下载」→ start() 的 already_downloaded 守卫
+# 同样因为 cache_root is None 不触发 → 起第二个线程对同一批文件再下一遍。
+#
+# 所以 load 期间要占住跟下载同一个"全局单活跃"槽位。
+
+
+def test_loading_blocks_concurrent_start() -> None:
+    """load 进行中 → 设置页点下载被挡成 busy,不会起第二份下载。"""
+    mgr = DownloadManager()
+    with mgr.loading("1.7B"):
+        accepted, reason = mgr.start("1.7B")
+        assert accepted is False
+        assert reason == "busy"
+
+        accepted, reason = mgr.start("0.6B")
+        assert accepted is False
+        assert reason == "busy"
+
+
+def test_loading_releases_slot_afterwards() -> None:
+    mgr = DownloadManager()
+    with mgr.loading("0.6B"):
+        pass
+    assert mgr._active_variant is None
+
+
+def test_loading_releases_slot_on_exception() -> None:
+    """load 抛错也要还回槽位,否则设置页永久 busy。"""
+    mgr = DownloadManager()
+    with pytest.raises(RuntimeError), mgr.loading("0.6B"):
+        raise RuntimeError("load failed")
+    assert mgr._active_variant is None
+
+
+def test_loading_does_not_steal_slot_from_active_download() -> None:
+    """已有真下载在跑时,loading() 不抢槽位、也不能在退出时把它清掉。"""
+    mgr = DownloadManager()
+    with mgr._lock:
+        mgr._active_variant = "1.7B"
+
+    with mgr.loading("0.6B"):
+        pass
+
+    assert mgr._active_variant == "1.7B"
+
+
+def test_loading_waits_for_an_active_download(monkeypatch) -> None:
+    """反方向也要互斥:设置页已在下载时,load() 必须等它下完再走。
+
+    第 1 轮 review 补的 loading() 只挡住了"load 在前、下载在后"这一个方向;
+    反过来(用户点了「下载 1.7B」,下载没完就把识别模型下拉切到 1.7B →
+    _switch_stt_variant 里的 load 照样调 snapshot_download)仍会两份并发写同一
+    个 cache 目录,而两个 variant 的 allow_patterns 都含共享的 tokenizer/*。
+    """
+    import threading
+
+    mgr = DownloadManager()
+    in_download = threading.Event()
+    may_finish = threading.Event()
+    order: list[str] = []
+
+    def fake_snapshot(repo_id, **kwargs):
+        order.append("download_start")
+        in_download.set()
+        assert may_finish.wait(timeout=5.0)
+        order.append("download_end")
+        return "/fake/cache"
+
+    monkeypatch.setattr(
+        "daobidao.stt.qwen3._download_manager.snapshot_download",
+        fake_snapshot,
+    )
+
+    accepted, _ = mgr.start("1.7B")
+    assert accepted is True
+    assert in_download.wait(timeout=5.0)
+
+    entered = threading.Event()
+
+    def _load_side():
+        with mgr.loading("1.7B"):
+            order.append("load_body")
+            entered.set()
+
+    t = threading.Thread(target=_load_side, daemon=True)
+    t.start()
+
+    # 下载还没放行,load 的 body 不该已经跑起来
+    assert not entered.wait(timeout=0.3)
+
+    may_finish.set()
+    assert entered.wait(timeout=5.0)
+    t.join(timeout=5.0)
+
+    assert order == ["download_start", "download_end", "load_body"]

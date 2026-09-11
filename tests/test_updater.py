@@ -346,8 +346,8 @@ def test_trigger_if_stale_returns_false_when_in_progress():
 # --------------------------------------------------------------------------
 
 
-def test_configure_logging_default_no_stderr_handler(monkeypatch, tmp_path):
-    """默认不挂 stderr handler —— 命令行启动时不在 terminal 打 log。"""
+def test_configure_logging_quiet_no_stderr_handler(monkeypatch, tmp_path):
+    """console=False(--quiet)时只挂 file handler,终端全静默。"""
     import logging
 
     import daobidao.logger as log_mod
@@ -364,8 +364,8 @@ def test_configure_logging_default_no_stderr_handler(monkeypatch, tmp_path):
     for h in root.handlers[:]:
         root.removeHandler(h)
     try:
-        log_mod.configure_logging("INFO")
-        # 默认只有 file handler,无 stderr
+        log_mod.configure_logging("INFO", console=False)
+        # 只有 file handler,无 stderr
         assert len(root.handlers) == 1
         assert isinstance(
             root.handlers[0], logging.handlers.RotatingFileHandler

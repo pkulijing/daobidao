@@ -1,6 +1,6 @@
 """模型变体下载管理器 — 36 轮"模型管理与可视化下载"。
 
-封装 modelscope cache 检查 + 后台下载线程 + 进度状态 + 取消信号。
+封装磁盘状态检查 + 后台下载线程 + 进度状态 + 取消信号。
 跟 ``Qwen3ASRSTT.load()`` 平级地各自调用 ``modelscope.snapshot_download``
 (不引入抽象层),DownloadManager 只负责把文件下到磁盘,session 构造留给
 真正切到该 variant 时由 load() 处理。
@@ -8,9 +8,11 @@
 
 from __future__ import annotations
 
+import contextlib
 import threading
 import time
 from collections import deque
+from pathlib import Path
 from typing import Any
 
 # 顶层 import 让测试能 patch 到 _download_manager 模块上的符号
@@ -26,8 +28,6 @@ logger = get_logger(__name__)
 VARIANTS = ("0.6B", "1.7B")
 
 REPO_ID = "zengshuishui/Qwen3-ASR-onnx"
-REPO_OWNER = "zengshuishui"
-REPO_NAME = "Qwen3-ASR-onnx"
 
 # 每个 variant 必需的核心文件。检查时所有文件都被 modelscope 索引到磁盘 →
 # 视为已下载;任一缺失(包括用户外部 rm) → 未下载。tokenizer/* 是共享资源
@@ -75,12 +75,18 @@ class DownloadManager:
         self._byte_log: deque[tuple[float, int]] = deque(maxlen=128)
         # 取消信号:set 后下一次 callback.update 会抛 _DownloadCancelled
         self._cancel_event = threading.Event()
+        # modelscope 给出的真实 snapshot 目录。见 set_cache_root。
+        self._cache_root: Path | None = None
+        # 真正串行化"谁在调 snapshot_download"的锁:后台下载线程与
+        # Qwen3ASRSTT.load() 都要先拿到它。见 loading()。
+        # 锁序恒为 _download_lock → _lock,不得反向。
+        self._download_lock = threading.Lock()
 
     def variant_states(self) -> dict[str, dict[str, Any]]:
         """返回每个 variant 当前状态的浅拷贝(直接给 _send_json 用)。
 
-        ``downloaded`` 字段每次都重新跑 cache 检查,反映磁盘实时状态(用户
-        外部 rm 后下次 GET 自动报 False)。``eta_seconds`` 实时计算。
+        ``downloaded`` 字段每次都重新看磁盘,反映实时状态(用户外部 rm 后
+        下次 GET 自动报 False)。``eta_seconds`` 实时计算。
         """
         with self._lock:
             snap = {v: dict(s) for v, s in self._state.items()}
@@ -93,32 +99,78 @@ class DownloadManager:
             s["eta_seconds"] = int(remaining / speed) if speed > 0 else 0
         return snap
 
-    def is_variant_downloaded(self, variant: str) -> bool:
-        """检查 variant 必需的所有核心文件是否都在 modelscope cache 里。
+    @property
+    def cache_root(self) -> Path | None:
+        """modelscope 给出的真实 snapshot 目录;还不知道时为 None。"""
+        with self._lock:
+            return self._cache_root
 
-        走 modelscope 官方 ``ModelFileSystemCache.get_file_by_path``,该方法
-        自带磁盘一致性兜底:索引说有但磁盘没有时自动清掉索引并返 None。
+    def set_cache_root(self, root: Path | str | None) -> None:
+        """记下 modelscope 自己算出的 snapshot 目录。
+
+        来源只有两个,都是 modelscope 的返回值、不是我们推的路径:
+        ``Qwen3ASRSTT.load()`` 成功后的 ``cache_root``,以及本类
+        ``_worker`` 里那次 ``snapshot_download`` 的返回值。
+
+        **为什么不自己算**:1.40 起 ``snapshot_download`` 委托给
+        ``modelscope_hub``,落点由它内部 ``find_reusable_legacy_repo_dir()``
+        在四种历史布局(``models/<owner>--<name>/snapshots/<rev>/`` /
+        ``hub/models/<owner>/<name>/`` / ...)之间探测决定。我们复刻不了这套
+        探测:37 轮实机上,旧做法与 ``local_files_only=True`` 两条路都指到了
+        空的旧布局目录,而 942 MB 真文件在新布局里,于是把已下好的 0.6B 判成
+        "未下载"。
+
+        ``None`` 是 no-op —— load 没跑成时别把已知的好值冲掉。
+        """
+        if root is None:
+            return
+        with self._lock:
+            self._cache_root = Path(root)
+
+    def is_variant_downloaded(self, variant: str) -> bool:
+        """variant 的核心文件是否都在磁盘上。
+
+        两个 variant 是同一 repo 下的兄弟目录(``model_0.6B/`` /
+        ``model_1.7B/``),所以知道 root 之后这就只是 ``Path.exists()``。
+        root 还不知道(没 load 过、也没下载过)→ 返 False,不猜。
         """
         if variant not in REQUIRED_FILES:
             return False
-        for rel_path in REQUIRED_FILES[variant]:
-            if self._cache_lookup(rel_path) is None:
-                return False
-        return True
+        root = self.cache_root
+        if root is None:
+            return False
+        return all((root / rel).exists() for rel in REQUIRED_FILES[variant])
 
-    def _cache_lookup(self, rel_path: str) -> str | None:
-        """单文件 cache 查询。抽出独立方法方便测试 patch。"""
-        from modelscope.hub.file_download import (
-            ModelFileSystemCache,
-            get_model_cache_root,
-        )
+    @contextlib.contextmanager
+    def loading(self, variant: str | None):
+        """`Qwen3ASRSTT.load()` 期间独占下载权。
 
-        cache = ModelFileSystemCache(
-            get_model_cache_root(),
-            owner=REPO_OWNER,
-            name=REPO_NAME,
-        )
-        return cache.get_file_by_path(rel_path)
+        load() 在缓存没命中时自己就会调 ``snapshot_download``(首启可能几分钟),
+        所以它和本类的后台下载必须**双向**互斥 —— 两个下载器无协调地写同一个
+        cache 目录,而两个 variant 的 ``allow_patterns`` 还共享 ``tokenizer/*``,
+        重叠文件可能被读到写了一半的状态。
+
+        - **load 在前**:占住"全局单活跃"槽位,设置页此时点「下载」被
+          ``start()`` 挡成 ``busy``。这条尤其针对首启 —— 那时 ``cache_root``
+          还是 None、设置页显示"未下载",正诱导用户去点。
+        - **下载在前**:在 ``_download_lock`` 上等它下完再进 body,而不是并发
+          再下一份。等待是对的:文件本来就正在被拉下来。
+
+        槽位已被别人占着时**不抢也不清**,那份下载的 ``_worker`` 自己会还。
+        """
+        with self._download_lock:
+            acquired = False
+            with self._lock:
+                if self._active_variant is None:
+                    self._active_variant = variant
+                    acquired = True
+            try:
+                yield
+            finally:
+                if acquired:
+                    with self._lock:
+                        if self._active_variant == variant:
+                            self._active_variant = None
 
     # ------------------------------------------------------------------
     # start() — 触发后台下载
@@ -182,11 +234,15 @@ class DownloadManager:
                 "tokenizer/*",
             ]
             cb_class = _make_callback_class(self, variant)
-            mod.snapshot_download(
-                REPO_ID,
-                allow_patterns=allow_patterns,
-                progress_callbacks=[cb_class],
-            )
+            # 与 loading() 共用一把锁:同一时刻只允许一个 snapshot_download。
+            with self._download_lock:
+                root = mod.snapshot_download(
+                    REPO_ID,
+                    allow_patterns=allow_patterns,
+                    progress_callbacks=[cb_class],
+                )
+            # 下完之后 modelscope 告诉我们文件到底落在哪 —— 记下来
+            self.set_cache_root(root)
             logger.info("model_download_done", variant=variant)
         except _DownloadCancelled:
             with self._lock:

@@ -128,6 +128,9 @@
   "main.mic_lost_during_recording": "Recording aborted: microphone offline",
   "main.stale_instance_blocked": "Port {port} is in use, but the occupant is not daobidao. Close the conflicting program, change settings_port in config.yaml, or pass --allow-multiple to skip the check.",
   "main.preload": "Preloading STT model...",
+  "main.preload_failed": "Failed to load model {variant}; retrying with 0.6B…",
+  "main.preload_fallback": "Temporarily using 0.6B (config unchanged; download in settings to switch back)",
+  "main.preload_all_failed": "Model load failed: check your network, or download the model from the settings page",
   "main.overlay_unavail": "Recording overlay unavailable",
   "main.shutting_down": "Shutting down...",
   "main.ready": "Ready! Hold the hotkey to start speaking",
@@ -159,6 +162,7 @@
   "cli.init_help": "Initialize: install .app bundle (macOS) + download STT model",
   "cli.allow_multiple_help": "Skip the single-instance check, allowing multiple daobidao processes to coexist (settings_port still conflicts; each instance needs its own port)",
   "cli.verbose_help": "Print logs to terminal in real-time (default: file only)",
+  "cli.quiet_help": "Print nothing to the terminal (default prints startup milestones and warnings)",
   "cli.uninstall_help": "Clean up .app bundle, LaunchAgent, TCC permissions (then run uv tool uninstall daobidao)",
   "init.start": "Initializing Daobidao...",
   "init.download_model": "Downloading STT model (~990 MB on first run for 0.6B)...",
@@ -182,5 +186,6 @@
   "uninstall.removed_model": "Removed model cache",
   "uninstall.keep_model": "Keeping model cache",
   "uninstall.no_model": "Model cache not found, skipping",
-  "uninstall.done": "Cleanup complete. You can now run:\n  uv tool uninstall daobidao"
+  "uninstall.done": "Cleanup complete. You can now run:\n  uv tool uninstall daobidao",
+  "stt.download_slow": "First run downloads the model ({variant}, about {size}); this can take a few minutes on a slow link, please wait…"
 }

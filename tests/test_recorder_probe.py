@@ -278,6 +278,140 @@ Source #1
 
 
 # ====================================================================
+# locale:pactl 输出是本地化的,解析器必须锁死在固定 locale 下取
+# ====================================================================
+#
+# 37 轮真机 bug:用户桌面 LANG=zh_CN.UTF-8 时 pactl 把字段名翻成
+# 「名称：」「端口：」,解析器一条都匹配不上 → 判成"没有可用输入端口" →
+# 麦克风永远探测不到、完全无法录音。
+#
+# 下面的中文 fixture 是从那台机器(Ubuntu 24.04 / PipeWire / pactl 16.1)
+# 上真抓的,不是手写模拟。注意被翻译的只有字段名和 port 的 description,
+# `availability unknown` / `not available` 这些判定关键字保持英文。
+
+_PACTL_OUTPUT_ZH = """\
+信源 #49
+\t状态：RUNNING
+\t名称：alsa_output.pci-0000_00_1f.3.analog-stereo.monitor
+\t驱动程序：PipeWire
+\t端口：
+\t\tanalog-output-speaker: 扬声器 (type: 扬声器, priority: 10000, availability group: Legacy 4, availability unknown)
+\t活动端口：analog-output-speaker
+信源 #50
+\t状态：SUSPENDED
+\t名称：alsa_input.pci-0000_00_1f.3.analog-stereo
+\t驱动程序：PipeWire
+\t端口：
+\t\tanalog-input-front-mic: 前麦克风 (type: Mic, priority: 8500, availability group: Legacy 1, not available)
+\t\tanalog-input-mic: 话筒 (type: Mic, priority: 8700, availability group: Legacy 2, not available)
+\t活动端口：analog-input-front-mic
+信源 #51
+\t状态：SUSPENDED
+\t名称：alsa_input.usb-Shenzhen_jiayz_photo_industrial_ltd_BOYA_mini_2-02.analog-stereo
+\t驱动程序：PipeWire
+\t端口：
+\t\tanalog-input-mic: 话筒 (type: Mic, priority: 8700, availability unknown)
+\t活动端口：analog-input-mic
+"""
+
+# 同一台机器、同一时刻,只是 LC_ALL=C 跑出来的那一份。
+_PACTL_OUTPUT_EN = """\
+Source #49
+\tState: RUNNING
+\tName: alsa_output.pci-0000_00_1f.3.analog-stereo.monitor
+\tDriver: PipeWire
+\tPorts:
+\t\tanalog-output-speaker: Speaker (type: Speaker, priority: 10000, availability group: Legacy 4, availability unknown)
+\tActive Port: analog-output-speaker
+Source #50
+\tState: SUSPENDED
+\tName: alsa_input.pci-0000_00_1f.3.analog-stereo
+\tDriver: PipeWire
+\tPorts:
+\t\tanalog-input-front-mic: Front Microphone (type: Mic, priority: 8500, availability group: Legacy 1, not available)
+\t\tanalog-input-mic: Microphone (type: Mic, priority: 8700, availability group: Legacy 2, not available)
+\tActive Port: analog-input-front-mic
+Source #51
+\tState: SUSPENDED
+\tName: alsa_input.usb-Shenzhen_jiayz_photo_industrial_ltd_BOYA_mini_2-02.analog-stereo
+\tDriver: PipeWire
+\tPorts:
+\t\tanalog-input-mic: Microphone (type: Mic, priority: 8700, availability unknown)
+\tActive Port: analog-input-mic
+"""
+
+
+def _fake_localized_pactl(*_a, **kwargs):
+    """一个会看 env 的假 pactl:没把 locale 锁成 C 就吐中文。
+
+    这样 locale 是**被测行为的输入**,而不是跑测机器的属性 —— 同一份代码
+    在英文机 / 中文机 / CI 上都得出逐字相同的结论。
+    """
+    env = kwargs.get("env") or {}
+    lc = env.get("LC_ALL") or env.get("LC_MESSAGES") or env.get("LANG") or ""
+    if lc.split(".")[0] in ("C", "POSIX"):
+        return _completed(_PACTL_OUTPUT_EN)
+    return _completed(_PACTL_OUTPUT_ZH)
+
+
+def test_pactl_parser_immune_to_user_locale(monkeypatch):
+    """用户桌面是中文 locale 时也要认出插着的 USB 麦。
+
+    改动前:recorder 不传 env → 假 pactl 吐中文 → 解析器全不匹配 → False。
+    """
+    monkeypatch.setenv("LANG", "zh_CN.UTF-8")
+    monkeypatch.setenv("LANGUAGE", "zh_CN:zh")
+    monkeypatch.delenv("LC_ALL", raising=False)
+    _patch_subprocess_run(monkeypatch, _fake_localized_pactl)
+
+    from daobidao.recorder import _check_pactl_input_available
+
+    assert _check_pactl_input_available() is True
+
+
+def test_pactl_run_forces_c_locale_without_dropping_env(monkeypatch):
+    """传给 pactl 的 env 必须锁 C locale,且保留原有环境变量。
+
+    env= 是整体替换而非叠加:只传 {"LC_ALL": "C"} 会把 XDG_RUNTIME_DIR /
+    PULSE_SERVER 掐掉,pactl 直接连不上音频服务器。
+    """
+    monkeypatch.setenv("LANG", "zh_CN.UTF-8")
+    monkeypatch.setenv("LANGUAGE", "zh_CN:zh")
+    monkeypatch.setenv("XDG_RUNTIME_DIR", "/run/user/1000")
+    seen: dict = {}
+
+    def _capture(*_a, **kwargs):
+        seen.update(kwargs)
+        return _completed(_PACTL_OUTPUT_EN)
+
+    _patch_subprocess_run(monkeypatch, _capture)
+
+    from daobidao.recorder import _check_pactl_input_available
+
+    _check_pactl_input_available()
+
+    env = seen.get("env")
+    assert env is not None, "必须显式传 env,否则跟着用户 locale 走"
+    assert env["LC_ALL"] == "C"
+    assert env["LANGUAGE"] == ""
+    assert env["XDG_RUNTIME_DIR"] == "/run/user/1000"
+
+
+def test_pactl_parser_only_understands_english_field_names(monkeypatch):
+    """解析器本身只认英文字段名 —— 这是上面那条 locale 锁定的前提。
+
+    不是在保留 bug:把这个前提钉住,将来谁动了 locale 锁定,这条会提醒他
+    解析这一侧也得跟着改。
+    """
+    _patch_subprocess_run(
+        monkeypatch, lambda *_a, **_k: _completed(_PACTL_OUTPUT_ZH)
+    )
+    from daobidao.recorder import _check_pactl_input_available
+
+    assert _check_pactl_input_available() is False
+
+
+# ====================================================================
 # 非 Linux 路径(query_devices)
 # ====================================================================
 

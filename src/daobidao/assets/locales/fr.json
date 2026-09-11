@@ -128,6 +128,9 @@
   "main.mic_lost_during_recording": "Enregistrement interrompu : microphone hors ligne",
   "main.stale_instance_blocked": "Le port {port} est occupé, mais l'occupant n'est pas daobidao. Fermez le programme en conflit, changez settings_port dans config.yaml, ou utilisez --allow-multiple pour ignorer cette vérification.",
   "main.preload": "Préchargement du modèle STT…",
+  "main.preload_failed": "Échec du chargement du modèle {variant} ; nouvel essai avec 0.6B…",
+  "main.preload_fallback": "Utilisation temporaire de 0.6B (configuration inchangée ; téléchargez depuis les réglages pour revenir)",
+  "main.preload_all_failed": "Échec du chargement du modèle : vérifiez le réseau ou téléchargez le modèle depuis la page des réglages",
   "main.overlay_unavail": "Fenêtre d’enregistrement non disponible",
   "main.shutting_down": "Arrêt en cours…",
   "main.ready": "Prêt ! Maintenez le raccourci pour commencer à parler",
@@ -159,6 +162,7 @@
   "cli.init_help": "Initialiser : installer le bundle .app (macOS) + télécharger le modèle STT",
   "cli.allow_multiple_help": "Ignorer la vérification d'instance unique, permettant à plusieurs daobidao de coexister (settings_port reste en conflit ; chaque instance doit avoir son propre port)",
   "cli.verbose_help": "Afficher les journaux dans le terminal en temps réel (par défaut : fichier uniquement)",
+  "cli.quiet_help": "N'afficher aucune sortie dans le terminal (par défaut : jalons de démarrage et avertissements)",
   "cli.uninstall_help": "Nettoyer le bundle .app, LaunchAgent et les permissions TCC (puis exécuter uv tool uninstall daobidao)",
   "init.start": "Initialisation de Daobidao…",
   "init.download_model": "Téléchargement du modèle STT (~990 Mo au premier lancement pour 0.6B)...",
@@ -182,5 +186,6 @@
   "uninstall.removed_model": "Cache du modèle supprimé",
   "uninstall.keep_model": "Cache du modèle conservé",
   "uninstall.no_model": "Cache du modèle introuvable, ignoré",
-  "uninstall.done": "Nettoyage terminé. Vous pouvez maintenant exécuter :\n  uv tool uninstall daobidao"
+  "uninstall.done": "Nettoyage terminé. Vous pouvez maintenant exécuter :\n  uv tool uninstall daobidao",
+  "stt.download_slow": "Le premier lancement télécharge le modèle ({variant}, environ {size}) ; cela peut prendre quelques minutes sur une connexion lente, veuillez patienter…"
 }

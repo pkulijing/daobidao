@@ -381,7 +381,16 @@ class WhisperInput:
                 )
                 return
             self._last_mic_warning_at = now
-        logger.warning("mic_offline", reason=reason, detail=detail)
+        logger.warning(
+            "mic_offline",
+            reason=reason,
+            detail=detail,
+            message=(
+                t("main.mic_offline_title")
+                + " · "
+                + t("main.mic_offline_hint_settings")
+            ),
+        )
         if self._overlay and self.overlay_enabled:
             try:
                 msg = (
@@ -620,41 +629,58 @@ class WhisperInput:
     def preload_model(self) -> bool:
         """预加载模型(让首次按热键时不要卡在加载)。
 
-        如果配置的 variant 没下载,回退到 0.6B 临时跑(不改持久化配置 —
-        用户进设置页能看到"未下载"提示并主动下,下完后切回去)。0.6B 也
-        没下时返 False,跳过 preload(让用户进设置页主动下载)。
+        **load() 本身就是"下过没有"的权威**:命中缓存就秒回,没下就下载
+        (下得久会有 ``qwen3_download_slow`` 提示打到终端)。所以这里不做
+        任何前置的缓存判断 —— 37 轮之前那套自己算 modelscope 缓存落点的
+        判断在 modelscope 1.40 上恒判"未下载",见
+        ``DownloadManager.set_cache_root`` 的注释。
+
+        配置的 variant load 不起来(网络断、repo 改了)且它不是 0.6B →
+        回退 0.6B 再试一次(更小、更可能已在本地),**不改持久化配置**。
+        都失败 → 返 False 跳过 preload,让用户进设置页处理。
         """
         configured = getattr(self.stt, "variant", None)
-        if configured and not self.download_manager.is_variant_downloaded(
-            configured
-        ):
+        logger.info("model_preload_start", message=t("main.preload"))
+        try:
+            # 占住下载槽位:load() 没命中缓存时自己会下,期间设置页点「下载」
+            # 会被挡成 busy,避免两份 snapshot_download 并发写同一 cache。
+            with self.download_manager.loading(configured):
+                self.stt.load()
+        except Exception as exc:
             logger.warning(
-                "configured_variant_not_downloaded",
-                configured=configured,
-                message=(
-                    f"Configured variant {configured} not in cache; "
-                    f"checking 0.6B fallback"
-                ),
+                "preload_failed",
+                variant=configured,
+                error=repr(exc),
+                message=t("main.preload_failed", variant=configured or "?"),
             )
-            if self.download_manager.is_variant_downloaded("0.6B"):
-                # 临时切回 0.6B(不改持久化 config)
-                from daobidao.stt.qwen3 import Qwen3ASRSTT
-
-                self.stt = Qwen3ASRSTT(variant="0.6B")
-                logger.info("preload_fallback_to_0_6b", was=configured)
-            else:
-                logger.error(
-                    "no_variant_downloaded_skip_preload",
-                    message=(
-                        "Both 0.6B and configured variant missing; "
-                        "user must download via settings page"
-                    ),
-                )
+            if configured == "0.6B" or not self._fallback_to_0_6b():
                 self._notify_status("ready")
                 return False
-        logger.info("model_preload_start", message=t("main.preload"))
-        self.stt.load()
+
+        self.download_manager.set_cache_root(
+            getattr(self.stt, "cache_root", None)
+        )
         self._notify_status("ready")
+        return True
+
+    def _fallback_to_0_6b(self) -> bool:
+        """配置的 variant load 失败后,拿 0.6B 再试一次。成功才换 self.stt。"""
+        from daobidao.stt.qwen3 import Qwen3ASRSTT
+
+        fallback = Qwen3ASRSTT(variant="0.6B")
+        try:
+            with self.download_manager.loading("0.6B"):
+                fallback.load()
+        except Exception:
+            logger.exception(
+                "preload_fallback_failed",
+                message=t("main.preload_all_failed"),
+            )
+            return False
+        self.stt = fallback
+        logger.info(
+            "preload_fallback_to_0_6b", message=t("main.preload_fallback")
+        )
         return True
 
     # ------------------------------------------------------------------
@@ -702,11 +728,15 @@ class WhisperInput:
 
             try:
                 new_stt = Qwen3ASRSTT(variant=new_variant)
-                new_stt.load()
+                with self.download_manager.loading(new_variant):
+                    new_stt.load()
                 old_stt = self.stt
                 self.stt = new_stt
                 del old_stt
                 gc.collect()
+                self.download_manager.set_cache_root(
+                    getattr(new_stt, "cache_root", None)
+                )
                 with self._stt_switch_lock:
                     self._stt_switch_state.update(
                         switching=False,
@@ -778,6 +808,11 @@ def main():
         action="store_true",
         help=t("cli.verbose_help"),
     )
+    parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help=t("cli.quiet_help"),
+    )
     if sys.platform == "darwin":
         parser.add_argument(
             "--uninstall",
@@ -785,6 +820,11 @@ def main():
             help=t("cli.uninstall_help"),
         )
     args = parser.parse_args()
+
+    # CLI 的 --verbose / --quiet 必须在任何分支之前生效:下面的 --init 分支
+    # 读到配置之前就 return,不在这里重配的话 `--init --quiet` 仍会往终端打
+    # 四条里程碑。configure_logging 幂等,读完配置后还会再调一次。
+    configure_logging("INFO", stderr=args.verbose, console=not args.quiet)
 
     # --init: 一次性完成安装后初始化
     if args.init:
@@ -864,10 +904,12 @@ def main():
     config = config_mgr.config
 
     # 用户配置的 log_level 覆盖早期默认(idempotent re-configure)。
-    # --verbose 才挂 stderr handler;否则只写文件,terminal 干净。
+    # 默认走控制台通道(启动里程碑 + WARNING 以上);--verbose 换成完整
+    # ConsoleRenderer 全量输出,--quiet 则终端全静默、只写文件。
     configure_logging(
         config.get("log_level", "INFO"),
         stderr=args.verbose,
+        console=not args.quiet,
     )
 
     # 从配置更新语言（覆盖默认值）
@@ -935,11 +977,14 @@ def main():
     except ImportError:
         logger.warning("overlay_unavailable", message=t("main.overlay_unavail"))
 
-    # 预加载模型
-    if not args.no_preload:
-        wi.preload_model()
-
-    # 启动热键监听
+    # 热键 listener 先构造、先挂信号处理器,**再** preload。
+    #
+    # 37 轮:preload 首启要同步下几百 MB 模型,可能几分钟。信号处理器原来挂在
+    # preload 之后,那段窗口里 Ctrl+C 会以 KeyboardInterrupt(BaseException)
+    # 直接冒出 main() —— 不打 shutting_down、不停 worker、不关 settings
+    # server、不收 PortAudio;被 kill_stale_instance 的 SIGTERM 命中同理。
+    # 构造 listener 不会开始监听(listen 在 start() 里),stop() 对没 start 过的
+    # listener 也是安全的,所以可以放心提前。
     listener = HotkeyListener(
         hotkey=hotkey,
         on_press=wi.on_key_press,
@@ -953,6 +998,9 @@ def main():
     # 用 Event 把"该退出了"信号从任意线程传回主线程，由主线程统一 sys.exit。
     _shutting_down = False
     _shutdown_event = threading.Event()
+    # 提前声明:shutdown() 要能停掉托盘,否则 macOS 下 icon.run() 阻塞着主线程、
+    # 而信号触发的 shutdown 拿不到它的引用,进程只能被 SIGKILL。
+    tray_icon = None
     # terminate_portaudio 超时时置位,末尾走 os._exit(0) 跳过 atexit。
     # 见 docs/24-退出路径CoreAudio死锁修复/。
     _force_exit = False
@@ -962,6 +1010,9 @@ def main():
         if _shutting_down:
             return
         _shutting_down = True
+        if tray_icon is not None:
+            with contextlib.suppress(Exception):
+                tray_icon.stop()
         logger.info("shutting_down", message=t("main.shutting_down"))
         with contextlib.suppress(Exception):
             listener.stop()
@@ -988,6 +1039,21 @@ def main():
 
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
+
+    # 预加载模型(首启可能在这里下载数分钟 —— 上面的信号处理器已就位)
+    if not args.no_preload:
+        wi.preload_model()
+
+    # preload 期间收到过信号 → 此处必须直接退。
+    #
+    # Python 的信号处理器 return 之后主线程**回到被打断处继续跑** —— 也就是
+    # 说 shutdown() 已经把 listener / worker / PortAudio / settings server 全
+    # 收了,下载却还会跑完剩下的几分钟,然后一路装配下去。少了这个检查,macOS
+    # 上会走到 tray_icon.run() 永久阻塞(第二次 Ctrl+C 被 _shutting_down 挡掉),
+    # 表现为"打印了正在退出、端口也放了,进程却还在",只能 SIGKILL。
+    if _shutting_down:
+        _final_exit()
+        return
 
     listener.start()
 

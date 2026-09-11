@@ -26,7 +26,8 @@
 
 ## P1 — 重大新功能
 
-(暂无)
+- [#19 把 uv.lock 的 modelscope 升到用户实际会装到的版本](https://github.com/pkulijing/daobidao/issues/19) · `type:test` `area:devexp` —— dev 钉 1.35.4 / 用户拿 1.40.0,37 轮那两个未发版缺陷正是这么漏出去的
+- [#20 给 main() 的启动编排补集成测试](https://github.com/pkulijing/daobidao/issues/20) · `type:test` `area:test` —— CLI 开关 + 信号退出路径,37 轮 review 在这块抓到两个真 bug
 
 ## P2 — 一般小功能小修复
 
@@ -38,6 +39,7 @@
 - [#9 并发模型迁移到 asyncio](https://github.com/pkulijing/daobidao/issues/9) · `type:refactor` `area:backend`
 - [#10 ORT optimized_model 持久化](https://github.com/pkulijing/daobidao/issues/10) · `type:perf` `area:stt`
 - [#11 1.7B 模型启用 GPU 推理后端(CUDA / CoreML)](https://github.com/pkulijing/daobidao/issues/11) · `type:perf` `area:stt`
+- [#21 设置页「已下载」在 cache_root 未知时应显示第三态](https://github.com/pkulijing/daobidao/issues/21) · `type:feat` `area:ui`
 
 ## 已完成 / 不再追踪
 

@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import threading
 import time
 import wave
 from pathlib import Path
@@ -30,6 +31,7 @@ from typing import ClassVar, Literal
 
 import numpy as np
 
+from daobidao.i18n import t
 from daobidao.logger import get_logger
 from daobidao.stt.base import BaseSTT, StreamEvent
 from daobidao.stt.qwen3._feature import (
@@ -56,6 +58,18 @@ logger = get_logger(__name__)
 REPO_ID = "zengshuishui/Qwen3-ASR-onnx"
 Variant = Literal["0.6B", "1.7B"]
 VALID_VARIANTS: tuple[Variant, ...] = ("0.6B", "1.7B")
+
+# 37 轮:snapshot_download 超过这个秒数还没返回,就在终端提一句"在下模型,
+# 别急"。modelscope 只打一个按文件计数的聚合进度条(9 个文件),最大那个
+# decoder.int8.onnx(756 MB)会让它在同一格上停数分钟不动,看起来像卡死。
+# 缓存命中时这个调用 ~1s 返回,计时器直接被 cancel。
+_SLOW_DOWNLOAD_HINT_S = 3.0
+
+# 只用于上面那句提示的文案,不参与任何下载逻辑。
+_VARIANT_DOWNLOAD_SIZE: dict[str, str] = {
+    "0.6B": "990 MB",
+    "1.7B": "2.4 GB",
+}
 
 # Upper bound on tokens generated per utterance. Based on empirical check: a
 # 10s Chinese sample emits ~30 tokens; 60s ≤ ~250. 400 gives plenty of slack
@@ -86,6 +100,25 @@ class Qwen3ASRSTT(BaseSTT):
     # Load
     # ------------------------------------------------------------------
 
+    def _start_slow_download_hint(self) -> threading.Timer:
+        """起一个计时器,下载久了就在终端提一句。调用方负责 cancel。"""
+
+        def _hint() -> None:
+            logger.info(
+                "qwen3_download_slow",
+                variant=self.variant,
+                message=t(
+                    "stt.download_slow",
+                    variant=self.variant,
+                    size=_VARIANT_DOWNLOAD_SIZE.get(self.variant, ""),
+                ),
+            )
+
+        timer = threading.Timer(_SLOW_DOWNLOAD_HINT_S, _hint)
+        timer.daemon = True
+        timer.start()
+        return timer
+
     def load(self) -> None:
         if self._runner is not None and self._tokenizer is not None:
             return
@@ -108,6 +141,7 @@ class Qwen3ASRSTT(BaseSTT):
         # 这里把它的 stdout 吞了避免污染 terminal。出错时把吞下的内容转 log
         # 留诊断;tqdm 进度条走 stderr 不受影响,真下载时仍可见。
         captured = io.StringIO()
+        hint = self._start_slow_download_hint()
         try:
             with contextlib.redirect_stdout(captured):
                 self.cache_root = Path(
@@ -120,6 +154,8 @@ class Qwen3ASRSTT(BaseSTT):
                     output=captured.getvalue(),
                 )
             raise
+        finally:
+            hint.cancel()
         logger.info(
             "qwen3_snapshot_done",
             variant=self.variant,

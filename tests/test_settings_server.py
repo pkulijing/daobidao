@@ -44,6 +44,24 @@ def autostart_state(monkeypatch):
     return state
 
 
+@pytest.fixture(autouse=True)
+def _no_real_pypi(monkeypatch):
+    """禁掉真实的 PyPI 查询 —— 本文件一律不发网络请求。
+
+    37 轮:``SettingsServer.start()`` 会顺手起一次后台更新检测,原来那次走的是
+    **真的 urlopen**。于是本文件的用例在网络慢 / 被墙时会随环境变红:
+    ``test_update_check_force_triggers_fetch`` 等启动那次检测落定只等 2 秒,
+    而一次 SSL 握手超时要 3 秒以上,等不到 → 后续 force 被"已有检测在跑"挡掉
+    → 断言 fetch 次数失败。全绿的机器也只是网快而已,不代表被测逻辑对。
+
+    单个用例要数调用次数时照常再 patch 一次,覆盖这里的桩。
+    """
+    monkeypatch.setattr(
+        "daobidao.updater.fetch_latest_version",
+        lambda timeout=3.0: None,
+    )
+
+
 @pytest.fixture
 def running_server(tmp_path, autostart_state, monkeypatch):
     """启动 SettingsServer,yield (host, port, config_manager) 三元组。"""
