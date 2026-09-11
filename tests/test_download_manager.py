@@ -55,7 +55,7 @@ def test_variant_states_returns_copy_not_reference() -> None:
 def test_required_files_covers_both_variants() -> None:
     """REQUIRED_FILES 常量必须列出每个 variant 的核心 .onnx 文件。"""
     assert set(REQUIRED_FILES.keys()) == {"0.6B", "1.7B"}
-    for _variant, files in REQUIRED_FILES.items():
+    for files in REQUIRED_FILES.values():
         # 至少包含 3 个核心 ONNX 文件
         assert any("conv_frontend.onnx" in f for f in files)
         assert any("encoder.int8.onnx" in f for f in files)

@@ -79,6 +79,7 @@ class CustomBuildHook(BuildHookInterface):
                 capture_output=True,
                 text=True,
                 timeout=5,
+                check=False,  # 下面自己看 returncode
             )
             if r.returncode == 0:
                 return r.stdout.strip()

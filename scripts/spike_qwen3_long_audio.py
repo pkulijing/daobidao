@@ -89,8 +89,10 @@ def main():
     )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_lines: list[str] = [
-        f"{'chunk':>5} {'time(s)':>8} {'n_af':>6} {'committed':>9} "
-        f"{'slid_af':>8} {'slid_cmt':>8}  delta",
+        (
+            f"{'chunk':>5} {'time(s)':>8} {'n_af':>6} {'committed':>9} "
+            f"{'slid_af':>8} {'slid_cmt':>8}  delta"
+        ),
         "-" * 80,
     ]
 

@@ -25,7 +25,7 @@ def load_locales() -> None:
 
 def set_language(lang: str) -> None:
     """设置当前语言。不支持的语言回退到默认语言。"""
-    global _current_lang
+    global _current_lang  # noqa: PLW0603 - 模块级当前语言的 setter
     _current_lang = lang if lang in SUPPORTED_LANGUAGES else DEFAULT_LANGUAGE
 
 

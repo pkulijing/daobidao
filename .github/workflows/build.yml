@@ -49,10 +49,11 @@ jobs:
       - name: Install dev deps
         run: uv sync --group dev
 
-      # 放在 sync 之后:用 uv run 而不是 uvx,因为 uvx 每次取**最新** ruff,而
-      # uv.lock 钉的是另一个版本。ruff 把新规则提升进默认集时(0.16 干过一次),
-      # CI 会在没人改代码的情况下突然变红,而本地 `uv run ruff check .` 依旧全绿
-      # —— dev 和 CI 跑的不是同一版。跟 lock 对齐,升 ruff 时由 lock 的更新触发适配。
+      # 放在 sync 之后:用 uv run 而不是 uvx,因为 uvx 每次取**最新** ruff,
+      # uv.lock 钉的是另一个版本 —— dev 和 CI 跑的不是同一版,同一份代码会得出
+      # 两种判定。跟 lock 对齐,升 ruff 时由 lock 的更新触发适配。
+      # (规则集本身另有一道防线:pyproject 用 select 而非 extend-select,
+      #  ruff 把新规则提进默认集时不会凭空扩大本项目的规则集。)
       - name: Ruff check
         run: uv run ruff check .
 

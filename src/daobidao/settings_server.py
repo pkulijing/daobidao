@@ -63,7 +63,7 @@ _SETTINGS_TEMPLATE: Template | None = None
 
 def _load_settings_template() -> Template:
     """从 assets/settings.html 加载模板（首次调用时缓存）。"""
-    global _SETTINGS_TEMPLATE
+    global _SETTINGS_TEMPLATE  # noqa: PLW0603 - 模板懒加载缓存
     if _SETTINGS_TEMPLATE is None:
         src = (
             files("daobidao.assets")

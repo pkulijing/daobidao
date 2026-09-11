@@ -100,7 +100,7 @@ def wi(fake_stt_streaming, fake_recorder, monkeypatch):
     pasted: list[str] = []
     monkeypatch.setattr(
         "daobidao.__main__.type_text",
-        lambda text: pasted.append(text),
+        pasted.append,
     )
 
     instance = WhisperInput(

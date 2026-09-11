@@ -29,6 +29,7 @@ def _read_commit() -> str:
             capture_output=True,
             text=True,
             timeout=2,
+            check=False,  # 下面自己看 returncode
         )
         if r.returncode == 0:
             return r.stdout.strip()

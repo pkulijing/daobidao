@@ -5,7 +5,7 @@
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     # 升级前看 https://github.com/astral-sh/ruff-pre-commit/releases
-    rev: v0.15.12
+    rev: v0.16.7
     hooks:
       # ruff-check 必须在 ruff-format 之前（官方要求）
       - id: ruff-check

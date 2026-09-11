@@ -164,10 +164,20 @@ def install_app_bundle() -> str:
 
     # 6. Ad-hoc 签名
     logger.info("install_sign", message=t("install.sign"))
-    subprocess.run(
+    # 不用 check=True:codesign 在没装 Command Line Tools 的机器上可能是个
+    # 失败的 stub,而本模块的前提正是「不需要 CLT」—— 签不上 bundle 仍能跑,
+    # 只是 TCC 授权可能不稳。但失败必须留痕,否则用户只看到权限莫名不生效。
+    signed = subprocess.run(
         ["codesign", "--force", "--sign", "-", "--deep", APP_BUNDLE_PATH],
         capture_output=True,
+        check=False,
     )
+    if signed.returncode != 0:
+        logger.warning(
+            "install_sign_failed",
+            returncode=signed.returncode,
+            stderr=signed.stderr.decode("utf-8", "replace").strip(),
+        )
 
     # 7. 清掉旧 TCC 授权,避免"僵尸条目"问题。
     #    TCC 按 (bundle_id, cdhash) 索引授权记录,CI 每次 release 重新
@@ -179,6 +189,7 @@ def install_app_bundle() -> str:
     subprocess.run(
         ["tccutil", "reset", "Accessibility", BUNDLE_ID],
         capture_output=True,
+        check=False,  # 没有旧条目也算成功,失败了也不该挡住安装
     )
 
     # 8. 保存 venv 路径
@@ -256,6 +267,7 @@ def uninstall_cleanup() -> None:
         subprocess.run(
             ["launchctl", "bootout", f"gui/{os.getuid()}/{AUTOSTART_LABEL}"],
             capture_output=True,
+            check=False,  # 服务本来就没加载时非零退出,卸载照常继续
         )
         os.remove(AUTOSTART_FILE)
         print(
@@ -270,6 +282,7 @@ def uninstall_cleanup() -> None:
         subprocess.run(
             ["tccutil", "reset", service, BUNDLE_ID],
             capture_output=True,
+            check=False,  # 清不掉旧授权也不该挡住卸载
         )
     print(f"[uninstall] {t('uninstall.reset_tcc', bundle_id=BUNDLE_ID)}")
 

@@ -16,9 +16,7 @@ from pathlib import Path
 from typing import Any
 
 # 顶层 import 让测试能 patch 到 _download_manager 模块上的符号
-from modelscope import (
-    snapshot_download,  # noqa: F401  (re-exported for patching)
-)
+from modelscope import snapshot_download
 from modelscope.hub.callback import ProgressCallback
 
 from daobidao.logger import get_logger
@@ -224,8 +222,6 @@ class DownloadManager:
 
     def _worker(self, variant: str) -> None:
         """后台线程:跑 snapshot_download 拉文件,捕获错误写 state。"""
-        from daobidao.stt.qwen3 import _download_manager as mod
-
         try:
             allow_patterns = [
                 f"model_{variant}/conv_frontend.onnx",
@@ -236,7 +232,7 @@ class DownloadManager:
             cb_class = _make_callback_class(self, variant)
             # 与 loading() 共用一把锁:同一时刻只允许一个 snapshot_download。
             with self._download_lock:
-                root = mod.snapshot_download(
+                root = snapshot_download(
                     REPO_ID,
                     allow_patterns=allow_patterns,
                     progress_callbacks=[cb_class],

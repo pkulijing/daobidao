@@ -98,24 +98,47 @@ default = true
 
 [tool.ruff]
 line-length = 80
+# ruff 0.16 起会格式化 Markdown 里的 Python 代码块。docs/ 下是各轮开发的
+# 快照文档,写完即封存,不该被后来版本的 formatter 改写。
+extend-exclude = ["docs"]
 
 [tool.ruff.lint]
-extend-select = [
+# 用 select 而非 extend-select:后者是「在 ruff 默认集之上扩展」,而默认集会
+# 随 ruff 版本变大（0.16 一次就把一整批规则提进默认集,项目凭空多出 36 条红,
+# 且 dev 钉 lock 版、CI 用 uvx 取最新时两边判定还不一致）。select 让规则集
+# 完全由项目掌控:升 ruff 只带来「已选规则的实现变化」,不会多出一整类。
+select = [
+    "E",      # pycodestyle errors
+    "F",      # pyflakes
+    "W",      # pycodestyle warnings
     "I",      # isort - import 排序
     "N",      # pep8-naming - 命名规范
     "UP",     # pyupgrade - 使用新语法
     "B",      # flake8-bugbear - 常见 bug
     "SIM",    # flake8-simplify - 可简化的代码
-    "RUF",    # ruff 专有规则
-    "W",      # pycodestyle warnings
     "C4",     # flake8-comprehensions
+    "RUF",    # ruff 专有规则
+    "PIE",    # flake8-pie - 冗余写法
+    "PERF",   # perflint - 低效写法
+    "ISC",    # flake8-implicit-str-concat - 隐式字符串拼接
+    "EXE",    # flake8-executable - shebang 与可执行位一致
+    "PLC",    # pylint convention
+    "PLE",    # pylint error
+    "PLW",    # pylint warning（含 PLW1510:subprocess.run 必须显式 check=）
 ]
 ignore = [
     "RUF001",  # 字符串中的全角字符（中文项目正常）
     "RUF002",  # docstring 中的全角字符
     "RUF003",  # 注释中的全角字符
     "E501",    # line too long（由 ruff format 处理长行）
+    # 函数内 import 在本项目是刻意设计:__main__ / stt 工厂 / 平台 backend
+    # 都靠它把 numpy / onnxruntime / pyobjc 的导入成本推迟到真用到时,
+    # 好让 `--help` 和不碰 STT 的测试不必付这笔钱。
+    "PLC0415",  # import should be at top-level
 ]
+# 刻意不选 BLE（blind-except）:本项目里 8 处 except Exception/BaseException
+# 全是有意为之 —— 3 处在工作线程里把异常摆渡回主线程,5 处是关机/清理/HTTP
+# handler 的兜底边界。逐个加 noqa 只是噪音。
 
 [tool.ruff.format]
 quote-style = "double"
@@ -123,7 +146,7 @@ indent-style = "space"
 
 [dependency-groups]
 dev = [
-    "ruff>=0.15.9",
+    "ruff>=0.16.7",
     "pytest>=8.0",
     "pytest-cov>=7.1.0",
     "pre-commit>=4.6.0",

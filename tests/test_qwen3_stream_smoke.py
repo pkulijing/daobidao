@@ -190,7 +190,7 @@ def test_streaming_via_full_whisperinput_pipeline(
     paste_log: list[str] = []
     monkeypatch.setattr(
         "daobidao.__main__.type_text",
-        lambda text: paste_log.append(text),
+        paste_log.append,
     )
 
     wi = WhisperInput(

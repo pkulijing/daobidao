@@ -47,38 +47,47 @@ def _type_via_clipboard(text: str) -> None:
             ["xclip", "-selection", "clipboard", "-o"],
             capture_output=True,
             timeout=2,
+            check=False,  # 剪贴板为空时 xclip 非零退出,当作「没有原内容」
         ).stdout
     except Exception:
         original = None
 
     payload = text.encode("utf-8")
 
-    # 同时写 CLIPBOARD 和 PRIMARY，确保任何 Shift+Insert 绑定都能命中
-    subprocess.run(
-        ["xclip", "-selection", "clipboard"],
-        input=payload,
-        timeout=2,
-    )
-    subprocess.run(
-        ["xclip", "-selection", "primary"],
-        input=payload,
-        timeout=2,
-    )
+    try:
+        # 同时写 CLIPBOARD 和 PRIMARY，确保任何 Shift+Insert 绑定都能命中
+        subprocess.run(
+            ["xclip", "-selection", "clipboard"],
+            input=payload,
+            timeout=2,
+            check=True,
+        )
+        subprocess.run(
+            ["xclip", "-selection", "primary"],
+            input=payload,
+            timeout=2,
+            check=True,
+        )
 
-    # 短暂等待 X server 同步 selection owner
-    time.sleep(0.05)
+        # 短暂等待 X server 同步 selection owner
+        time.sleep(0.05)
 
-    # Shift+Insert：一个快捷键打通所有目标控件
-    subprocess.run(
-        ["xdotool", "key", "--clearmodifiers", "shift+Insert"], timeout=2
-    )
-
-    # 恢复原 CLIPBOARD
-    if original is not None:
-        time.sleep(0.1)
-        with contextlib.suppress(Exception):
-            subprocess.run(
-                ["xclip", "-selection", "clipboard"],
-                input=original,
-                timeout=2,
-            )
+        # Shift+Insert：一个快捷键打通所有目标控件
+        subprocess.run(
+            ["xdotool", "key", "--clearmodifiers", "shift+Insert"],
+            timeout=2,
+            check=True,
+        )
+    finally:
+        # 恢复原 CLIPBOARD。放 finally 里:上面任一步失败都要抛给调用方记
+        # 日志,但那时 CLIPBOARD 已经被我们顶掉,而原内容只存在 original
+        # 这个局部变量里 —— 收尾不跑完,用户的剪贴板就随栈帧一起永久丢了。
+        if original is not None:
+            time.sleep(0.1)
+            with contextlib.suppress(Exception):
+                subprocess.run(
+                    ["xclip", "-selection", "clipboard"],
+                    input=original,
+                    timeout=2,
+                    check=False,  # 恢复失败不影响本次粘贴
+                )

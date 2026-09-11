@@ -128,7 +128,9 @@ class _MainThreadRunner(NSObject):
     """通过 performSelectorOnMainThread 在主线程执行回调。"""
 
     def initWithBlock_(self, block):  # noqa: N802
-        self = objc.super(_MainThreadRunner, self).init()
+        # PyObjC 惯例:init 必须接住 objc.super().init() 的返回值(可能是
+        # 另一个对象或 None),不是普通 Python 里那种重绑 self 的笔误。
+        self = objc.super(_MainThreadRunner, self).init()  # noqa: PLW0642
         if self is None:
             return None
         self._block = block
@@ -149,7 +151,8 @@ class _ErrorHideTimerTarget(NSObject):
     """
 
     def initWithOverlay_(self, overlay):  # noqa: N802
-        self = objc.super(_ErrorHideTimerTarget, self).init()
+        # 同 _MainThreadRunner.initWithBlock_:PyObjC 的 init 惯例。
+        self = objc.super(_ErrorHideTimerTarget, self).init()  # noqa: PLW0642
         if self is None:
             return None
         self._overlay = overlay

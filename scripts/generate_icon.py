@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """生成 Daobidao 应用图标 (256x256 PNG)。"""
 
 from PIL import Image, ImageDraw

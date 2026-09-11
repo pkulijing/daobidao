@@ -121,7 +121,7 @@ def _install_fake_evdev() -> None:
     evdev = types.ModuleType("evdev")
     evdev.ecodes = ecodes
     evdev.InputDevice = InputDevice
-    evdev.list_devices = lambda: []
+    evdev.list_devices = list
 
     sys.modules["evdev"] = evdev
     sys.modules["evdev.ecodes"] = ecodes

@@ -178,7 +178,7 @@ def configure_logging(
       此时不再叠加控制台通道(否则同一条打两遍)。也用于 launchd 把 stderr
       重定向到日志文件的场景。
     """
-    global _configured
+    global _configured  # noqa: PLW0603 - 幂等配置的一次性标志
 
     log_dir = get_log_dir()
     log_dir.mkdir(parents=True, exist_ok=True)

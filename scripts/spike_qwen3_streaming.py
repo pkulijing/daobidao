@@ -111,10 +111,10 @@ def edit_distance(a: str, b: str) -> int:
 
 def chunk_audio(audio: np.ndarray) -> list[np.ndarray]:
     """Split audio into 2s chunks; last chunk may be shorter."""
-    chunks = []
-    for i in range(0, len(audio), CHUNK_SIZE_SAMPLES):
-        chunks.append(audio[i : i + CHUNK_SIZE_SAMPLES])
-    return chunks
+    return [
+        audio[i : i + CHUNK_SIZE_SAMPLES]
+        for i in range(0, len(audio), CHUNK_SIZE_SAMPLES)
+    ]
 
 
 # --------------------------------------------------------------------------

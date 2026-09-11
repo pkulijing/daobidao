@@ -82,6 +82,7 @@ def _check_pactl_input_available() -> bool:
             text=True,
             timeout=_PACTL_TIMEOUT_S,
             env=env,
+            check=False,  # 下面按 returncode 抛 PactlUnavailableError
         )
     except FileNotFoundError as exc:
         raise PactlUnavailableError("pactl command not found") from exc
