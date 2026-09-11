@@ -152,6 +152,12 @@ $ daobidao --quiet    # stdout / stderr 各 0 字节
 - #19 — 把 `uv.lock` 的 modelscope 升到用户实际会装到的版本
 - #20 — 给 `main()` 的启动编排补集成测试（CLI 开关 + 信号退出路径）
 - #21 — 设置页「已下载」在 cache_root 未知时应显示第三态「未检测」
+- #22 — 适配 ruff 新默认规则（36 条）+ 升 ruff 锁定版
+
+（#22 是发版时才暴露的：CI 的 `uvx ruff` 取最新版、`uv.lock` 钉 0.15.10，ruff 0.16
+把一批规则提升进默认集，而项目用的是 `extend-select`，于是没人改代码 CI 就红了 ——
+本轮之前的 master 同样红 35 条。发版前先把 CI 改成 `uv run ruff check .` 跟 lock
+对齐，适配新规则留给 #22。跟 #19 是同一个病。）
 
 ## 可沉淀项
 

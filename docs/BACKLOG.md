@@ -40,6 +40,7 @@
 - [#10 ORT optimized_model 持久化](https://github.com/pkulijing/daobidao/issues/10) · `type:perf` `area:stt`
 - [#11 1.7B 模型启用 GPU 推理后端(CUDA / CoreML)](https://github.com/pkulijing/daobidao/issues/11) · `type:perf` `area:stt`
 - [#21 设置页「已下载」在 cache_root 未知时应显示第三态](https://github.com/pkulijing/daobidao/issues/21) · `type:feat` `area:ui`
+- [#22 适配 ruff 新默认规则（36 条）+ 升 ruff 锁定版](https://github.com/pkulijing/daobidao/issues/22) · `type:refactor` `area:devexp`
 
 ## 已完成 / 不再追踪
 

@@ -29,9 +29,6 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Ruff check
-        run: uvx ruff check .
-
       - name: Shellcheck
         run: |
           sudo apt-get update -qq
@@ -51,6 +48,13 @@ jobs:
       # tests/conftest.py 注入 fake 模块兜住,所以单 ubuntu runner 就够。
       - name: Install dev deps
         run: uv sync --group dev
+
+      # 放在 sync 之后:用 uv run 而不是 uvx,因为 uvx 每次取**最新** ruff,而
+      # uv.lock 钉的是另一个版本。ruff 把新规则提升进默认集时(0.16 干过一次),
+      # CI 会在没人改代码的情况下突然变红,而本地 `uv run ruff check .` 依旧全绿
+      # —— dev 和 CI 跑的不是同一版。跟 lock 对齐,升 ruff 时由 lock 的更新触发适配。
+      - name: Ruff check
+        run: uv run ruff check .
 
       # round 33: dump runner 硬件 + 内核 + ORT 配置指纹,帮诊断 CI 偶发翻车
       # (4 个 STT 端到端测试在不同 runner 上结果不一,推测 runner 池 SKU 漂移)。
