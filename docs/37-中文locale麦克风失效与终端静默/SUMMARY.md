@@ -152,3 +152,26 @@ $ daobidao --quiet    # stdout / stderr 各 0 字节
 - #19 — 把 `uv.lock` 的 modelscope 升到用户实际会装到的版本
 - #20 — 给 `main()` 的启动编排补集成测试（CLI 开关 + 信号退出路径）
 - #21 — 设置页「已下载」在 cache_root 未知时应显示第三态「未检测」
+
+## 可沉淀项
+
+三条，都不是本项目特有的：
+
+1. **解析给机器读的输出，必须锁定 locale**（已提 [claude-code-global#164](https://github.com/pkulijing/claude-code-global/issues/164)）。这轮的 P0 就是
+   pactl 输出被翻译导致解析全不匹配。同一根因适用于任何 shell-out 后解析文本的场景
+   （`systemctl` / `ip` / `docker` / `git` 的部分子命令都本地化）。落点：
+   `playbooks/shell.md` 已经讲「中文 × shell 语法」的坑，这条是同族的第三种形态 ——
+   不是脚本里写了中文，而是**被调命令吐了中文**。判据一句话：把外部命令的输出喂给
+   解析器之前，先问它会不会跟着 `LANG` 变。
+
+2. **dev 用 lockfile 钉版本、用户走版本范围解析 → 两个环境跑的不是同一版**
+   （已提 [claude-code-global#165](https://github.com/pkulijing/claude-code-global/issues/165)）。这轮问题 3 / 4 全绿漏出去的结构性成因：`uv.lock` 钉
+   1.35.4，用户 `uv tool install` 拿 1.40.0，于是 CI 从来没执行过用户实际走的代码
+   路径。任何有 lockfile 的栈（uv / poetry / npm / cargo）+ 库形态分发都成立。
+   落点：`playbooks/python.md` 的依赖管理段。
+
+3. **真机诊断改动了别人机器的状态，必须还原并当面告知**（本轮未提 issue，人类判断
+   优先级不足；记在这里备查）。这轮为了对比 modelscope 版本行为，在用户机器上装了旧版，让 modelscope
+   造出一个空的旧布局缓存目录、后来又往里重下了 44 MB；虽然全部清理并复验了，但当时
+   若没主动交代，用户后来看到 `~/.cache` 多出目录只会更困惑。判据：**诊断动作只要
+   在对方机器上留下了 git 之外的痕迹，就要么还原、要么说清楚。**

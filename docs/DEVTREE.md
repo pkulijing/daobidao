@@ -89,11 +89,13 @@ graph TD
     N30 ~~~ N35
   end
 
-  subgraph e_mic_check["✅ 麦克风检测"]
+  subgraph e_mic_check["🔄 麦克风检测"]
     direction TB
     N23["✨ 23 · 麦克风检测"]:::feature
     N32["✨ 32 · 录音麦克风离线检测"]:::feature
+    N37["🐛 37 · 中文 locale 麦克风失效与终端静默"]:::bugfix
     N23 ~~~ N32
+    N32 ~~~ N37
   end
 
   subgraph e_remote["❌ 远程桌面"]
@@ -179,7 +181,7 @@ graph TD
 
 ## 节点索引
 
-> 最后更新：2026-04-27 | 共 36 轮
+> 最后更新：2026-09-11 | 共 37 轮
 
 | #   | 名称                        | 类型    | 所属 Epic      | 一句话描述                                                                                                                                                                                                                                                                                                                           |
 | --- | --------------------------- | ------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -219,6 +221,7 @@ graph TD
 | 34  | 更新检测 TTL                | ✨ 功能 | 安装体验       | UpdateChecker 加 1 小时 TTL + 高级设置「立即检查」按钮（force endpoint 无视 TTL，发现新版本走顶部 banner 不复制升级 UI）；顺手 configure_logging 默认 stderr=False + `--verbose` 让命令行启动 terminal 干净，并用 `contextlib.redirect_stdout` 吞掉 modelscope `snapshot_download` 的 print 杂讯                                     |
 | 35  | 流式滑窗                    | ✨ 功能 | 流式识别       | 给 Qwen3-ASR 流式 KV cache 加 audio + committed 双滑窗（700 / 400 token cap），28 轮的 35-80s 硬墙变无上限；用 122s 真音频朗读端到端验证（实测 audio ~13/s、committed ~3.4/s，滑窗 chunk 26 / 59 触发后输出连贯）；同步删 28s 接近上限提示 / overflow 浮窗死代码 + 三语 i18n；顺手发现 1.7B 长 prompt 在 ARM/CI 数值不稳已加 BACKLOG |
 | 36  | 模型管理与可视化下载        | ✨ 功能 | UI/UX 优化     | 设置页加「模型管理」卡片，可视化每个 STT variant 下载状态（进度条 + 速度 + ETA + 取消），未下载 variant 在下拉里 disabled；`DownloadManager` 直接调 modelscope `snapshot_download` 的 `progress_callbacks`，用 `BaseException` 取消防 retry 装饰器误吞；顺手修启动时 variant 未下载回退到 0.6B 避开 5-10 分钟黑屏；CI 顺手把 release.yml 加前置 lint+test job，堵住 v1.0.5 同款 tag-push 绕过 build CI 的洞 |
+| 37 | 中文 locale 麦克风失效与终端静默 | 🐛 修复 | 麦克风检测 | 中文界面机器上 `pactl` 字段名被本地化导致麦克风探测恒判不可用（P0，解析机器输出改为锁 `LC_ALL=C`）；34 轮的终端静默补回「控制台通道」（WARNING 以上全放 + 启动里程碑白名单）并加 `--quiet`；顺带修掉 36 轮两个未发版缺陷 —— modelscope 1.40 下 `ModelFileSystemCache` import 崩溃、以及自算缓存落点恒判「未下载」，改为只认 modelscope 返回的 `cache_root`、preload 直接 load 不再前置判断 |
 
 ---
 
@@ -251,8 +254,8 @@ graph TD
 
 ##### 麦克风检测
 
-- 状态: 已完成
-- 轮次：23, 32
+- 状态：进行中
+- 轮次：23, 32, 37
 
 ##### 远程桌面
 
