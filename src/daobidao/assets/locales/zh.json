@@ -161,7 +161,7 @@
   "stt.unknown_engine": "未知的 STT 引擎: {engine}",
   "cli.init_help": "初始化：安装 .app bundle (macOS) + 下载 STT 模型",
   "cli.allow_multiple_help": "跳过单实例检测，允许多个 daobidao 同时运行（注意 settings_port 仍会冲突，多实例需各自配置不同端口）",
-  "cli.verbose_help": "在 terminal 实时打印日志（默认只写文件）",
+  "cli.verbose_help": "在 terminal 实时打印日志并把日志级别升到 DEBUG（默认只写文件）",
   "cli.quiet_help": "终端不打任何输出（默认会打启动里程碑与警告）",
   "cli.uninstall_help": "清理 .app bundle、LaunchAgent、TCC 授权（之后再运行 uv tool uninstall daobidao）",
   "init.start": "开始初始化 叨逼叨...",

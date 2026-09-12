@@ -161,7 +161,7 @@
   "stt.unknown_engine": "Moteur STT inconnu : {engine}",
   "cli.init_help": "Initialiser : installer le bundle .app (macOS) + télécharger le modèle STT",
   "cli.allow_multiple_help": "Ignorer la vérification d'instance unique, permettant à plusieurs daobidao de coexister (settings_port reste en conflit ; chaque instance doit avoir son propre port)",
-  "cli.verbose_help": "Afficher les journaux dans le terminal en temps réel (par défaut : fichier uniquement)",
+  "cli.verbose_help": "Afficher les journaux dans le terminal en temps réel et passer le niveau à DEBUG (par défaut : fichier uniquement)",
   "cli.quiet_help": "N'afficher aucune sortie dans le terminal (par défaut : jalons de démarrage et avertissements)",
   "cli.uninstall_help": "Nettoyer le bundle .app, LaunchAgent et les permissions TCC (puis exécuter uv tool uninstall daobidao)",
   "init.start": "Initialisation de Daobidao…",
