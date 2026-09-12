@@ -149,6 +149,7 @@ class ConfigManager:
     def __init__(self, config_path: str | None = None):
         self._path = self._resolve_path(config_path)
         self._config: dict = {}
+        self._file_config: dict = {}
         self.load()
 
     @staticmethod
@@ -180,6 +181,17 @@ class ConfigManager:
     def config(self) -> dict:
         return self._config
 
+    @property
+    def file_config(self) -> dict:
+        """用户配置文件里的原始内容(未与 DEFAULT_CONFIG 合并)。
+
+        为什么需要它:``config`` 是深合并后的视图,``DEFAULT_CONFIG`` 里的键
+        **永远存在**,所以「用户到底有没有显式设置这一项」在那份视图里问不出来
+        —— 例如 ``log_level`` 默认值就是 "INFO",于是"没设"和"显式设成 INFO"
+        长得一模一样。要区分二者只能看文件本身。
+        """
+        return copy.deepcopy(self._file_config)
+
     def load(self) -> dict:
         """加载配置文件，合并默认值。"""
         if os.path.exists(self._path):
@@ -187,6 +199,8 @@ class ConfigManager:
                 file_config = yaml.safe_load(f) or {}
         else:
             file_config = {}
+
+        self._file_config = file_config
 
         migrated, changed = _migrate_legacy(file_config)
         self._config = _deep_merge(DEFAULT_CONFIG, migrated)
