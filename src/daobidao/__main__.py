@@ -44,7 +44,7 @@ import time
 
 import numpy as np
 
-from daobidao.config_manager import ConfigManager
+from daobidao.config_manager import DEFAULT_CONFIG, ConfigManager
 from daobidao.hotkey import HotkeyListener
 from daobidao.i18n import load_locales, set_language, t
 from daobidao.input_method import type_text
@@ -756,6 +756,30 @@ class WhisperInput:
         threading.Thread(target=_worker, name="stt-switch", daemon=True).start()
 
 
+def _resolve_log_level(config_mgr: ConfigManager, *, verbose: bool) -> str:
+    """决定 root logger 的级别。
+
+    优先级:用户配置文件里**显式**写的 ``log_level`` > ``--verbose`` 隐含的
+    DEBUG > 默认 INFO。
+
+    为什么不能直接看 ``config.get("log_level")``:``ConfigManager.config``
+    是 ``DEFAULT_CONFIG`` 深合并出来的视图,默认值 ``"INFO"`` 永远在,于是
+    「用户没设」和「用户显式设成 INFO」长得一模一样。按那份视图判断,
+    ``--verbose`` 永远升不到 DEBUG —— 这个分支写在代码里、也写进了文档,
+    但从来没被执行过。要区分二者只能看用户文件本身,即 ``file_config``。
+
+    「显式」的判定再加一条:文件里写的值**不能等于默认值**。因为
+    ``assets/config.example.yaml`` 里就写着 ``log_level: INFO``,而首次启动
+    会把那份 example 拷成用户配置 —— 只按「键在不在文件里」判断的话,首装
+    用户的 ``--verbose`` 会静默失效;而设置页保存走的 ``_generate_yaml``
+    根本不写 log_level,于是同一台机器会因为「用没用过设置页」得到两种行为。
+    """
+    explicit = config_mgr.file_config.get("log_level")
+    if explicit and str(explicit) != str(DEFAULT_CONFIG["log_level"]):
+        return str(explicit)
+    return "DEBUG" if verbose else "INFO"
+
+
 def main():
     # 先加载 i18n（argparse 之前需要用到翻译）
     load_locales()
@@ -824,7 +848,12 @@ def main():
     # CLI 的 --verbose / --quiet 必须在任何分支之前生效:下面的 --init 分支
     # 读到配置之前就 return,不在这里重配的话 `--init --quiet` 仍会往终端打
     # 四条里程碑。configure_logging 幂等,读完配置后还会再调一次。
-    configure_logging("INFO", stderr=args.verbose, console=not args.quiet)
+    # --verbose 在这一步就按 DEBUG 配 —— --init 路径没有第二次机会。
+    configure_logging(
+        "DEBUG" if args.verbose else "INFO",
+        stderr=args.verbose,
+        console=not args.quiet,
+    )
 
     # --init: 一次性完成安装后初始化
     if args.init:
@@ -905,9 +934,10 @@ def main():
 
     # 用户配置的 log_level 覆盖早期默认(idempotent re-configure)。
     # 默认走控制台通道(启动里程碑 + WARNING 以上);--verbose 换成完整
-    # ConsoleRenderer 全量输出,--quiet 则终端全静默、只写文件。
+    # ConsoleRenderer 全量输出并把级别升到 DEBUG(配置文件显式写了
+    # log_level 时以配置为准);--quiet 则终端全静默、只写文件。
     configure_logging(
-        config.get("log_level", "INFO"),
+        _resolve_log_level(config_mgr, verbose=args.verbose),
         stderr=args.verbose,
         console=not args.quiet,
     )

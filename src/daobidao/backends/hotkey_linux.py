@@ -1,8 +1,11 @@
 """热键监听模块 - 使用 evdev 监听键盘事件，支持区分左右修饰键。"""
 
 import contextlib
+import fcntl
+import os
 import select
 import threading
+import time
 from collections.abc import Callable
 
 import evdev
@@ -29,6 +32,48 @@ SUPPORTED_KEYS = {
 
 # 组合键延迟（秒）：按下热键后等待此时间，期间无其他键按下才触发录音
 COMBO_DELAY = 0.3
+
+# 空闲时最长的等待窗口（秒）。任一设备有事件时 select 会立刻返回，这个值
+# 只决定「select 不认的设备」最坏多久被扫到一次，见 _wait_for_events。
+_IDLE_WAIT_S = 0.05
+
+# 键盘全掉线后多久重扫一次设备列表（秒）。插回来不需要重启进程。
+_REDISCOVER_INTERVAL_S = 1.0
+
+
+def _set_nonblocking(devices: list[evdev.InputDevice]) -> None:
+    """把所有设备的 fd 设为非阻塞。
+
+    ``read_one()`` 在阻塞 fd 上会一直卡住（它内部就是一次 read(2)），
+    必须显式设成 O_NONBLOCK 才能"没有事件就返回 None"。
+    """
+    for device in devices:
+        try:
+            fd = device.fileno()
+            flags = fcntl.fcntl(fd, fcntl.F_GETFL)
+            fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+        except (OSError, AttributeError, ValueError):
+            # 设备已拔掉,或者不是真 fd(测试里的 fake)
+            continue
+
+
+def _wait_for_events(devices: list[evdev.InputDevice], timeout: float) -> None:
+    """等任一设备可读，最多等 ``timeout`` 秒。
+
+    **返回值刻意丢弃**：``select()`` 在这里只当「能被打断的 sleep」用，
+    不是「哪些设备有事件」的权威答案。部分 USB HID 键盘（典型是一个物理
+    键盘暴露两个 evdev 节点的那种）的 fd 永远不会被 select 报可读，只处理
+    select 返回的设备就会**静默丢事件**（issue #18：按热键毫无反应，换把
+    键盘就好）。所以调用方醒来后会把**所有**设备都 drain 一遍（见
+    ``_drain_devices``）—— select 只负责在有人敲键时立刻叫醒我们，
+    从而不必忙等。
+
+    fd 失效（拔键盘）时 select 抛 OSError，吞掉即可：裁剪交给 drain。
+    """
+    try:
+        select.select(devices, [], [], timeout)
+    except (OSError, ValueError):
+        return
 
 
 def find_keyboard_devices() -> list[evdev.InputDevice]:
@@ -149,25 +194,75 @@ class HotkeyListener:
         logger.info(
             "hotkey_listening",
             hotkey=self.hotkey_name,
+            keyboards=len(keyboards),
+            keyboard_names=[kb.name for kb in keyboards],
             message=t("hotkey.listening", hotkey=self.hotkey_name),
         )
 
+        _set_nonblocking(keyboards)
+
         while self._running:
-            # 使用 select 监听多个键盘设备
-            r, _, _ = select.select(keyboards, [], [], 0.5)
-            for device in r:
-                try:
-                    for event in device.read():
-                        if event.type != ecodes.EV_KEY:
-                            continue
-                        self._handle_key_event(event)
-                except (OSError, BlockingIOError):
-                    continue
+            if not keyboards:
+                # 全掉线:周期性重扫,插回来不用重启进程(很便宜,一次
+                # list_devices + 每台设备一次 capabilities)。
+                time.sleep(_REDISCOVER_INTERVAL_S)
+                keyboards = find_keyboard_devices()
+                if keyboards:
+                    _set_nonblocking(keyboards)
+                    logger.info(
+                        "hotkey_keyboards_reattached",
+                        keyboards=len(keyboards),
+                        keyboard_names=[kb.name for kb in keyboards],
+                    )
+                continue
+
+            _wait_for_events(keyboards, _IDLE_WAIT_S)
+            self._drain_devices(keyboards)
 
         # 清理
         for kb in keyboards:
             with contextlib.suppress(Exception):
                 kb.close()
+
+    def _drain_devices(self, keyboards: list[evdev.InputDevice]) -> None:
+        """把所有设备里就绪的事件全部读出来。
+
+        遍历的是**全部**设备,不是 ``select()`` 报可读的那几台 —— 有的键盘
+        fd 永远不会被 select 报可读,只看 select 就会丢事件(issue #18),
+        理由见 ``_wait_for_events``。
+        """
+        for device in list(keyboards):
+            try:
+                while True:
+                    event = device.read_one()
+                    if event is None:
+                        break
+                    if event.type == ecodes.EV_KEY:
+                        self._handle_key_event(event)
+            except BlockingIOError:
+                # 非阻塞 fd 上「暂时没数据」的另一种表达:evdev 的 read()
+                # 空闲时抛这个,read_one() 则返回 None。都不是掉线。
+                continue
+            except OSError:
+                # 设备被拔掉 / 读取失败:就地摘掉。留着它下一轮 select 会
+                # 直接抛 OSError,把整个监听线程带走 —— 热键从此静默失效。
+                self._drop_device(keyboards, device)
+
+    @staticmethod
+    def _drop_device(
+        keyboards: list[evdev.InputDevice], device: evdev.InputDevice
+    ) -> None:
+        """把失效设备从监听列表里摘掉并关闭。"""
+        with contextlib.suppress(ValueError):
+            keyboards.remove(device)
+        with contextlib.suppress(Exception):
+            device.close()
+        logger.warning(
+            "hotkey_device_lost",
+            name=getattr(device, "name", "?"),
+            path=getattr(device, "path", "?"),
+            remaining=len(keyboards),
+        )
 
     def _handle_key_event(self, event) -> None:
         """处理单个按键事件。"""

@@ -161,7 +161,7 @@
   "stt.unknown_engine": "Unknown STT engine: {engine}",
   "cli.init_help": "Initialize: install .app bundle (macOS) + download STT model",
   "cli.allow_multiple_help": "Skip the single-instance check, allowing multiple daobidao processes to coexist (settings_port still conflicts; each instance needs its own port)",
-  "cli.verbose_help": "Print logs to terminal in real-time (default: file only)",
+  "cli.verbose_help": "Print logs to the terminal in real-time and raise the level to DEBUG (default: file only)",
   "cli.quiet_help": "Print nothing to the terminal (default prints startup milestones and warnings)",
   "cli.uninstall_help": "Clean up .app bundle, LaunchAgent, TCC permissions (then run uv tool uninstall daobidao)",
   "init.start": "Initializing Daobidao...",
