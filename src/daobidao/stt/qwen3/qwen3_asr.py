@@ -101,23 +101,37 @@ def _required_cache_files(variant: str) -> tuple[str, ...]:
     )
 
 
+# 两代 modelscope 打「无法确认 revision」的 logger:<1.40 是自带 stderr
+# handler 且 propagate=False 的 "modelscope"(绕过我们的控制台通道,--quiet
+# 也压不住);>=1.40 委托给 modelscope_hub。
+_REVISION_WARNING_LOGGERS = ("modelscope", "modelscope_hub.download")
+
+
+def _skip_revision_warning(record: logging.LogRecord) -> bool:
+    return "confirm the cached file is for revision" not in record.getMessage()
+
+
 @contextlib.contextmanager
 def _mute_benign_revision_warning():
-    """临时压掉 modelscope_hub 那条「无法确认 revision」的 WARNING。
+    """临时压掉 modelscope 那条「无法确认 revision」的 WARNING。
 
-    ``local_files_only=True`` 命中缓存时 modelscope_hub 必打一条
-    ``Cannot confirm the cached file is for revision: master``：它想说的是
-    「本地没存 revision 信息，我没法替你确认」，而我们要的信息（文件在不在）
-    紧接着自己复核了。这条对用户没有任何可操作性，却是 WARNING —— 会经控制台
-    通道打到终端，变成每次启动吓人一次。只在探测期间压掉，别影响真下载。
+    ``local_files_only=True`` 命中缓存时 modelscope 必打一条
+    ``(We can not|Cannot) confirm the cached file is for revision: master``：
+    它想说的是「本地没存 revision 信息，我没法替你确认」，而我们要的信息
+    （文件在不在）紧接着自己复核了。这条对用户没有任何可操作性，却会打到终端，
+    变成每次启动吓人一次。只在探测期间压掉，别影响真下载。
+
+    用 filter 而不是调级别：modelscope 的 ``get_logger()`` 每次调用都会把
+    级别重置回 INFO；filter 只拦这一条，其它告警照常。
     """
-    target = logging.getLogger("modelscope_hub.download")
-    previous = target.level
-    target.setLevel(logging.ERROR)
+    targets = [logging.getLogger(name) for name in _REVISION_WARNING_LOGGERS]
+    for target in targets:
+        target.addFilter(_skip_revision_warning)
     try:
         yield
     finally:
-        target.setLevel(previous)
+        for target in targets:
+            target.removeFilter(_skip_revision_warning)
 
 
 class Qwen3ASRSTT(BaseSTT):

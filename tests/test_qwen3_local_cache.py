@@ -13,8 +13,8 @@
    (``any(output_dir.iterdir())``),所以「只有另一个 variant」的目录也会被
    它当成命中 —— 必须自己按 variant 复核文件清单,否则会带着不完整的缓存
    一路走到构造 runner 才炸。
-2. 它命中时必打一条 ``Cannot confirm the cached file is for revision`` 的
-   WARNING,会经控制台通道糊到用户脸上,所以只在探测期间压掉、之后必须恢复。
+2. 它命中时必打一条「confirm the cached file is for revision」的 WARNING,
+   会打到用户终端上,所以只在探测期间压掉、之后必须恢复。
 
 这条路只做加速,不承担正确性:任何失败都要落回原来的联网路径。
 """
@@ -135,20 +135,48 @@ def test_probe_rejects_nonempty_dir_missing_this_variant(
     assert stt._probe_local_cache(["tokenizer/*"]) is None
 
 
+class _Capture(logging.Handler):
+    def __init__(self):
+        super().__init__()
+        self.messages: list[str] = []
+
+    def emit(self, record):
+        self.messages.append(record.getMessage())
+
+
+# 两代 modelscope 打这条 WARNING 的 logger 名与措辞都不同:
+# 老版本(<1.40,含锁定的 1.35.4)走自带 stderr handler、propagate=False 的
+# "modelscope" logger,不经我们的控制台通道,--quiet 也压不住。
+@pytest.mark.parametrize(
+    ("logger_name", "message"),
+    [
+        (
+            "modelscope",
+            "We can not confirm the cached file is for revision: master",
+        ),
+        (
+            "modelscope_hub.download",
+            "Cannot confirm the cached file is for revision: master",
+        ),
+    ],
+)
 def test_probe_mutes_revision_warning_then_restores(
-    asr_mod, tmp_path, monkeypatch
+    asr_mod, tmp_path, monkeypatch, logger_name, message
 ):
-    """探测期间压掉 modelscope_hub 的 revision WARNING,结束后恢复原级别。"""
+    """探测期间只压掉 revision WARNING,其它告警照常,结束后不留 filter。"""
     root = _make_cache_dir(asr_mod, tmp_path / "snapshots" / "master")
-    target = logging.getLogger("modelscope_hub.download")
-    original = target.level
-    target.setLevel(logging.WARNING)
-    seen: list[int] = []
+    target = logging.getLogger(logger_name)
+    capture = _Capture()
+    target.addHandler(capture)
+    original_filters = list(target.filters)
+    original_level = target.level
 
     def fake(repo_id, **kw):
-        seen.append(target.level)
-        # 模拟它命中时打的那条 WARNING:压住了就不该被记录
-        target.warning("Cannot confirm the cached file is for revision: master")
+        # modelscope 的 get_logger() 每次调用都会把级别重置回 INFO,
+        # 靠调级别压制不可靠 —— 这里模拟这一重置
+        target.setLevel(logging.INFO)
+        target.warning(message)
+        target.warning("unrelated warning")
         return str(root)
 
     _install_fake_modelscope(monkeypatch, fake)
@@ -156,10 +184,14 @@ def test_probe_mutes_revision_warning_then_restores(
     stt = asr_mod.Qwen3ASRSTT(variant="0.6B")
     try:
         assert stt._probe_local_cache(["tokenizer/*"]) == root
-        assert seen == [logging.ERROR]
-        assert target.level == logging.WARNING  # 用完必须还原
+        assert capture.messages == ["unrelated warning"]
+        assert target.filters == original_filters  # 用完必须摘掉
+
+        target.warning(message)  # 探测之外不再拦
+        assert capture.messages[-1] == message
     finally:
-        target.setLevel(original)
+        target.removeHandler(capture)
+        target.setLevel(original_level)
 
 
 def test_load_uses_cache_and_skips_network(
